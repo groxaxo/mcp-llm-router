@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp_llm_router"
+version = "0.1.0"
+description = "MCP LLM Router"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastmcp<3",
+    "mcp",
+    "httpx",
+    "openai",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mcp_llm_router"]

@@ -33,7 +33,7 @@ def start_session(
     goal: str,
     constraints: Optional[str] = None,
     context: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Start a new agent session with a goal and optional constraints.
@@ -48,6 +48,7 @@ def start_session(
         Session details including session_id
     """
     import uuid
+
     session_id = str(uuid.uuid4())
 
     session_data = {
@@ -58,7 +59,7 @@ def start_session(
         "metadata": metadata or {},
         "events": [],
         "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat()
+        "updated_at": datetime.utcnow().isoformat(),
     }
 
     sessions[session_id] = session_data
@@ -66,16 +67,33 @@ def start_session(
     return {
         "session_id": session_id,
         "status": "active",
-        "message": f"Session started with goal: {goal}"
+        "message": f"Session started with goal: {goal}",
     }
+
+
+def _log_event(
+    session_id: str, kind: str, message: str, details: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Internal implementation of log_event."""
+    if session_id not in sessions:
+        return {"success": False, "error": f"Session {session_id} not found"}
+
+    event = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "kind": kind,
+        "message": message,
+        "details": details or {},
+    }
+
+    sessions[session_id]["events"].append(event)
+    sessions[session_id]["updated_at"] = datetime.utcnow().isoformat()
+
+    return {"success": True, "event": event, "session_id": session_id}
 
 
 @mcp.tool()
 def log_event(
-    session_id: str,
-    kind: str,
-    message: str,
-    details: Optional[Dict[str, Any]] = None
+    session_id: str, kind: str, message: str, details: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Log an event to a session.
@@ -89,27 +107,7 @@ def log_event(
     Returns:
         Confirmation of logged event
     """
-    if session_id not in sessions:
-        return {
-            "success": False,
-            "error": f"Session {session_id} not found"
-        }
-
-    event = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "kind": kind,
-        "message": message,
-        "details": details or {}
-    }
-
-    sessions[session_id]["events"].append(event)
-    sessions[session_id]["updated_at"] = datetime.utcnow().isoformat()
-
-    return {
-        "success": True,
-        "event": event,
-        "session_id": session_id
-    }
+    return _log_event(session_id, kind, message, details)
 
 
 @mcp.tool()
@@ -122,7 +120,7 @@ def agent_llm_request(
     provider: Optional[str] = None,
     max_tokens: int = 2000,
     temperature: float = 0.7,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Make a request to an LLM provider (OpenAI-compatible API).
@@ -144,27 +142,24 @@ def agent_llm_request(
     Examples:
         # OpenAI (default)
         agent_llm_request(session_id, "Hello", "gpt-4", api_key_env="OPENAI_API_KEY")
-        
+
         # OpenRouter using provider
-        agent_llm_request(session_id, "Hello", "anthropic/claude-3-opus", 
+        agent_llm_request(session_id, "Hello", "anthropic/claude-3-opus",
                          provider="openrouter", api_key_env="OPENROUTER_API_KEY")
-        
+
         # DeepInfra using provider
         agent_llm_request(session_id, "Hello", "meta-llama/Llama-2-70b-chat-hf",
                          provider="deepinfra", api_key_env="DEEPINFRA_API_KEY")
     """
     if session_id not in sessions:
-        return {
-            "success": False,
-            "error": f"Session {session_id} not found"
-        }
+        return {"success": False, "error": f"Session {session_id} not found"}
 
     # Get API key from environment
     api_key = os.getenv(api_key_env)
     if not api_key:
         return {
             "success": False,
-            "error": f"API key not found in environment variable: {api_key_env}"
+            "error": f"API key not found in environment variable: {api_key_env}",
         }
 
     # Determine base URL
@@ -188,14 +183,14 @@ def agent_llm_request(
                 f"{base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    "temperature": temperature
-                }
+                    "temperature": temperature,
+                },
             )
             response.raise_for_status()
             result = response.json()
@@ -203,7 +198,7 @@ def agent_llm_request(
         content = result["choices"][0]["message"]["content"]
 
         # Log this request in the session
-        log_event(
+        _log_event(
             session_id=session_id,
             kind="llm_request",
             message=f"LLM request to {model}",
@@ -211,8 +206,8 @@ def agent_llm_request(
                 "model": model,
                 "base_url": base_url,
                 "prompt_length": len(prompt),
-                "response_length": len(content)
-            }
+                "response_length": len(content),
+            },
         )
 
         return {
@@ -220,33 +215,27 @@ def agent_llm_request(
             "content": content,
             "model": model,
             "usage": result.get("usage", {}),
-            "session_id": session_id
+            "session_id": session_id,
         }
 
     except httpx.HTTPStatusError as e:
         error_msg = f"HTTP error {e.response.status_code}: {e.response.text}"
-        log_event(
+        _log_event(
             session_id=session_id,
             kind="error",
             message=f"LLM request failed: {error_msg}",
-            details={"model": model, "base_url": base_url}
+            details={"model": model, "base_url": base_url},
         )
-        return {
-            "success": False,
-            "error": error_msg
-        }
+        return {"success": False, "error": error_msg}
     except Exception as e:
         error_msg = str(e)
-        log_event(
+        _log_event(
             session_id=session_id,
             kind="error",
             message=f"LLM request failed: {error_msg}",
-            details={"model": model, "base_url": base_url}
+            details={"model": model, "base_url": base_url},
         )
-        return {
-            "success": False,
-            "error": error_msg
-        }
+        return {"success": False, "error": error_msg}
 
 
 @mcp.tool()
@@ -261,15 +250,9 @@ def get_session_context(session_id: str) -> Dict[str, Any]:
         Complete session data including goal, events, and metadata
     """
     if session_id not in sessions:
-        return {
-            "success": False,
-            "error": f"Session {session_id} not found"
-        }
+        return {"success": False, "error": f"Session {session_id} not found"}
 
-    return {
-        "success": True,
-        "session": sessions[session_id]
-    }
+    return {"success": True, "session": sessions[session_id]}
 
 
 @mcp.tool()
@@ -277,7 +260,7 @@ def connect_mcp_server(
     server_name: str,
     command: str,
     args: Optional[List[str]] = None,
-    env: Optional[Dict[str, str]] = None
+    env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
     Connect to another MCP server.
@@ -293,9 +276,7 @@ def connect_mcp_server(
     """
     try:
         server_params = StdioServerParameters(
-            command=command,
-            args=args or [],
-            env=dict(os.environ) | (env or {})
+            command=command, args=args or [], env=dict(os.environ) | (env or {})
         )
 
         # Store connection info
@@ -304,19 +285,19 @@ def connect_mcp_server(
             "args": args or [],
             "env": env or {},
             "connected": False,
-            "server_params": server_params
+            "server_params": server_params,
         }
 
         return {
             "success": True,
             "server_name": server_name,
-            "message": f"MCP server '{server_name}' configured for connection"
+            "message": f"MCP server '{server_name}' configured for connection",
         }
 
     except Exception as e:
         return {
             "success": False,
-            "error": f"Failed to configure MCP server connection: {str(e)}"
+            "error": f"Failed to configure MCP server connection: {str(e)}",
         }
 
 
@@ -334,7 +315,7 @@ def list_mcp_servers() -> Dict[str, Any]:
                 "name": name,
                 "command": info["command"],
                 "args": info["args"],
-                "connected": info["connected"]
+                "connected": info["connected"],
             }
             for name, info in mcp_connections.items()
         ]
@@ -342,9 +323,7 @@ def list_mcp_servers() -> Dict[str, Any]:
 
 
 async def call_mcp_tool(
-    server_name: str,
-    tool_name: str,
-    arguments: Optional[Dict[str, Any]] = None
+    server_name: str, tool_name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Call a tool on a connected MCP server.
@@ -358,10 +337,7 @@ async def call_mcp_tool(
         Tool call result
     """
     if server_name not in mcp_connections:
-        return {
-            "success": False,
-            "error": f"MCP server '{server_name}' not found"
-        }
+        return {"success": False, "error": f"MCP server '{server_name}' not found"}
 
     server_info = mcp_connections[server_name]
 
@@ -377,13 +353,13 @@ async def call_mcp_tool(
                     "success": True,
                     "server_name": server_name,
                     "tool_name": tool_name,
-                    "result": result
+                    "result": result,
                 }
 
     except Exception as e:
         return {
             "success": False,
-            "error": f"Failed to call tool '{tool_name}' on server '{server_name}': {str(e)}"
+            "error": f"Failed to call tool '{tool_name}' on server '{server_name}': {str(e)}",
         }
 
 
@@ -398,10 +374,7 @@ async def list_mcp_tools(server_name: str) -> Dict[str, Any]:
         List of available tools
     """
     if server_name not in mcp_connections:
-        return {
-            "success": False,
-            "error": f"MCP server '{server_name}' not found"
-        }
+        return {"success": False, "error": f"MCP server '{server_name}' not found"}
 
     server_info = mcp_connections[server_name]
 
@@ -420,16 +393,16 @@ async def list_mcp_tools(server_name: str) -> Dict[str, Any]:
                         {
                             "name": tool.name,
                             "description": tool.description,
-                            "input_schema": tool.input_schema
+                            "input_schema": tool.input_schema,
                         }
                         for tool in tools
-                    ]
+                    ],
                 }
 
     except Exception as e:
         return {
             "success": False,
-            "error": f"Failed to list tools on server '{server_name}': {str(e)}"
+            "error": f"Failed to list tools on server '{server_name}': {str(e)}",
         }
 
 
