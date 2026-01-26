@@ -25,6 +25,7 @@ PROVIDER_BASE_URLS = {
     "openrouter": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
     "deepinfra": os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai"),
     "anthropic": os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
+    "deepseek": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
 }
 
 
@@ -153,6 +154,16 @@ def agent_llm_request(
     """
     if session_id not in sessions:
         return {"success": False, "error": f"Session {session_id} not found"}
+
+    # Automatic routing for DeepSeek models
+    if (
+        (model.startswith("deepseek-") or "deepseek" in model)
+        and provider is None
+        and base_url is None
+    ):
+        provider = "deepseek"
+        if api_key_env == "OPENAI_API_KEY":  # Only switch if user hasn't overridden
+            api_key_env = "DEEPSEEK_API_KEY"
 
     # Get API key from environment
     api_key = os.getenv(api_key_env)
