@@ -111,6 +111,32 @@ def log_event(
     return _log_event(session_id, kind, message, details)
 
 
+def _get_api_key(name: str) -> Optional[str]:
+    """Get API key from environment or fallback to .bashrc parsing."""
+    # 1. Try environment
+    val = os.getenv(name)
+    if val and val not in ("", "YOUR_DEEPSEEK_API_KEY", "YOUR_OPENAI_API_KEY"):
+        return val
+
+    # 2. Try .bashrc fallback
+    bashrc_path = os.path.expanduser("~/.bashrc")
+    if os.path.exists(bashrc_path):
+        try:
+            with open(bashrc_path, "r") as f:
+                import re
+
+                content = f.read()
+                # Match export NAME="VAL" or export NAME=VAL
+                pattern = rf'^export\s+{name}=["\']?([^"\'\s#]+)["\']?'
+                match = re.search(pattern, content, re.MULTILINE)
+                if match:
+                    return match.group(1)
+        except Exception:
+            pass
+
+    return None
+
+
 @mcp.tool()
 def agent_llm_request(
     session_id: str,
@@ -165,12 +191,12 @@ def agent_llm_request(
         if api_key_env == "OPENAI_API_KEY":  # Only switch if user hasn't overridden
             api_key_env = "DEEPSEEK_API_KEY"
 
-    # Get API key from environment
-    api_key = os.getenv(api_key_env)
+    # Get API key (with bashrc fallback)
+    api_key = _get_api_key(api_key_env)
     if not api_key:
         return {
             "success": False,
-            "error": f"API key not found in environment variable: {api_key_env}",
+            "error": f"API key not found in environment or .bashrc: {api_key_env}",
         }
 
     # Determine base URL

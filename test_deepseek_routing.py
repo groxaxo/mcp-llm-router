@@ -30,7 +30,7 @@ sys.modules["mcp.client"] = MagicMock()
 sys.modules["mcp.client.stdio"] = MagicMock()
 
 # Now import the server
-from mcp_llm_router.server import agent_llm_request, sessions
+from mcp_llm_router.server import agent_llm_request, sessions, _get_api_key
 
 
 class TestDeepSeekRouting(unittest.TestCase):
@@ -38,6 +38,18 @@ class TestDeepSeekRouting(unittest.TestCase):
         # Create a dummy session
         self.session_id = "test-session"
         sessions[self.session_id] = {"session_id": self.session_id, "events": []}
+
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("os.path.exists")
+    @patch.dict(os.environ, {"DEEPSEEK_API_KEY": ""}, clear=False)
+    def test_get_api_key_fallback(self, mock_exists, mock_open):
+        mock_exists.return_value = True
+        # Simulate .bashrc content
+        bashrc_content = 'export DEEPSEEK_API_KEY="sk-bashrc-key"\n'
+        mock_open.return_value.__enter__.return_value.read.return_value = bashrc_content
+
+        key = _get_api_key("DEEPSEEK_API_KEY")
+        self.assertEqual(key, "sk-bashrc-key")
 
     @patch("mcp_llm_router.server.httpx.Client")
     @patch.dict(
