@@ -1,27 +1,27 @@
 {
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ],
-      "env": {}
-    },
-    "browsermcp": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@browsermcp/mcp@latest"
-      ]
-    },
-    "llm-router": {
-      "command": "/home/op/mcp-llm-router/.venv/bin/python",
-      "args": [
-        "-m",
-        "mcp_llm_router.server"
-      ],
-      "env": {}
+    "mcpServers": {
+        "sequential-thinking": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-sequential-thinking"
+            ],
+            "env": {}
+        },
+        "browsermcp": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@browsermcp/mcp@latest"
+            ]
+        },
+        "llm-router": {
+            "command": "/home/op/mcp-llm-router/.venv/bin/python",
+            "args": [
+                "-m",
+                "mcp_llm_router.server"
+            ],
+            "env": {}
+        }
     }
-  }
 }
