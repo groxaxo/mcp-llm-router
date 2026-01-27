@@ -16,7 +16,7 @@ async def connect_to_server(server_config: Dict[str, Any]):
     server_params = StdioServerParameters(
         command=server_config["command"],
         args=server_config.get("args", []),
-        env=dict(os.environ) | server_config.get("env", {})
+        env=dict(os.environ) | server_config.get("env", {}),
     )
 
     async with stdio_client(server_params) as (read, write):
@@ -31,19 +31,21 @@ async def connect_to_server(server_config: Dict[str, Any]):
                     {
                         "name": tool.name,
                         "description": tool.description,
-                        "input_schema": tool.inputSchema
+                        "input_schema": tool.inputSchema,
                     }
                     for tool in tools
                 ]
             }
 
 
-async def call_tool(server_config: Dict[str, Any], tool_name: str, arguments: Dict[str, Any] = None):
+async def call_tool(
+    server_config: Dict[str, Any], tool_name: str, arguments: Dict[str, Any] = None
+):
     """Call a tool on an MCP server."""
     server_params = StdioServerParameters(
         command=server_config["command"],
         args=server_config.get("args", []),
-        env=dict(os.environ) | server_config.get("env", {})
+        env=dict(os.environ) | server_config.get("env", {}),
     )
 
     async with stdio_client(server_params) as (read, write):
@@ -60,7 +62,7 @@ def load_config(config_path: str) -> dict:
         print(f"Config file not found: {config_path}")
         return {}
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         return json.load(f)
 
 
@@ -86,7 +88,9 @@ async def list_tools(server_name: str, config_path: str = None):
         print(f"❌ Failed to connect to server '{server_name}': {e}")
 
 
-async def run_tool(server_name: str, tool_name: str, args_json: str = None, config_path: str = None):
+async def run_tool(
+    server_name: str, tool_name: str, args_json: str = None, config_path: str = None
+):
     """Run a tool on a server."""
     if config_path is None:
         config_path = os.path.join(os.path.dirname(__file__), "mcp-config.json")
@@ -113,7 +117,23 @@ async def run_tool(server_name: str, tool_name: str, args_json: str = None, conf
         result = await call_tool(server_config, tool_name, arguments)
 
         print("✅ Tool result:")
-        print(json.dumps(result, indent=2))
+        try:
+            # Handle CallToolResult object
+            if hasattr(result, "content"):
+                # Handle text content
+                content_list = []
+                for content in result.content:
+                    if hasattr(content, "text"):
+                        content_list.append(content.text)
+                    elif isinstance(content, dict) and "text" in content:
+                        content_list.append(content["text"])
+                    else:
+                        content_list.append(str(content))
+                print("\n".join(content_list))
+            else:
+                print(json.dumps(result, indent=2))
+        except Exception as e:
+            print(f"Result (not JSON serializable): {result}")
 
     except Exception as e:
         print(f"❌ Failed to call tool: {e}")
@@ -121,7 +141,9 @@ async def run_tool(server_name: str, tool_name: str, args_json: str = None, conf
 
 async def main():
     parser = argparse.ArgumentParser(description="MCP Client")
-    parser.add_argument("action", choices=["list-tools", "call-tool"], help="Action to perform")
+    parser.add_argument(
+        "action", choices=["list-tools", "call-tool"], help="Action to perform"
+    )
     parser.add_argument("server", help="Server name")
     parser.add_argument("tool", nargs="?", help="Tool name (for call-tool action)")
     parser.add_argument("--args", "-a", help="JSON arguments for tool call")

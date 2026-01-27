@@ -137,8 +137,7 @@ def _get_api_key(name: str) -> Optional[str]:
     return None
 
 
-@mcp.tool()
-def agent_llm_request(
+def _agent_llm_request(
     session_id: str,
     prompt: str,
     model: str,
@@ -149,35 +148,7 @@ def agent_llm_request(
     temperature: float = 0.7,
     system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Make a request to an LLM provider (OpenAI-compatible API).
-
-    Args:
-        session_id: Session ID for context tracking
-        prompt: The prompt to send to the LLM
-        model: Model identifier (e.g., "gpt-4", "anthropic/claude-3-opus")
-        base_url: Base URL for the API (optional, overrides provider)
-        api_key_env: Environment variable name containing the API key
-        provider: Provider name (openai, openrouter, deepinfra, anthropic) for auto base_url
-        max_tokens: Maximum tokens to generate
-        temperature: Sampling temperature
-        system_prompt: Optional system prompt
-
-    Returns:
-        LLM response with content and metadata
-
-    Examples:
-        # OpenAI (default)
-        agent_llm_request(session_id, "Hello", "gpt-4", api_key_env="OPENAI_API_KEY")
-
-        # OpenRouter using provider
-        agent_llm_request(session_id, "Hello", "anthropic/claude-3-opus",
-                         provider="openrouter", api_key_env="OPENROUTER_API_KEY")
-
-        # DeepInfra using provider
-        agent_llm_request(session_id, "Hello", "meta-llama/Llama-2-70b-chat-hf",
-                         provider="deepinfra", api_key_env="DEEPINFRA_API_KEY")
-    """
+    """Internal implementation of agent_llm_request."""
     if session_id not in sessions:
         return {"success": False, "error": f"Session {session_id} not found"}
 
@@ -273,6 +244,60 @@ def agent_llm_request(
             details={"model": model, "base_url": base_url},
         )
         return {"success": False, "error": error_msg}
+
+
+@mcp.tool()
+def agent_llm_request(
+    session_id: str,
+    prompt: str,
+    model: str,
+    base_url: Optional[str] = None,
+    api_key_env: str = "OPENAI_API_KEY",
+    provider: Optional[str] = None,
+    max_tokens: int = 2000,
+    temperature: float = 0.7,
+    system_prompt: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Make a request to an LLM provider (OpenAI-compatible API).
+
+    Args:
+        session_id: Session ID for context tracking
+        prompt: The prompt to send to the LLM
+        model: Model identifier (e.g., "gpt-4", "anthropic/claude-3-opus")
+        base_url: Base URL for the API (optional, overrides provider)
+        api_key_env: Environment variable name containing the API key
+        provider: Provider name (openai, openrouter, deepinfra, anthropic) for auto base_url
+        max_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        system_prompt: Optional system prompt
+
+    Returns:
+        LLM response with content and metadata
+
+    Examples:
+        # OpenAI (default)
+        agent_llm_request(session_id, "Hello", "gpt-4", api_key_env="OPENAI_API_KEY")
+
+        # OpenRouter using provider
+        agent_llm_request(session_id, "Hello", "anthropic/claude-3-opus",
+                         provider="openrouter", api_key_env="OPENROUTER_API_KEY")
+
+        # DeepInfra using provider
+        agent_llm_request(session_id, "Hello", "meta-llama/Llama-2-70b-chat-hf",
+                         provider="deepinfra", api_key_env="DEEPINFRA_API_KEY")
+    """
+    return _agent_llm_request(
+        session_id,
+        prompt,
+        model,
+        base_url,
+        api_key_env,
+        provider,
+        max_tokens,
+        temperature,
+        system_prompt,
+    )
 
 
 @mcp.tool()
