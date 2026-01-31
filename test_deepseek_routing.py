@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import os
 import sys
 
@@ -7,22 +7,13 @@ import sys
 sys.path.append("/home/op/mcp-llm-router")
 
 # Mock FastMCP before importing server
-# We need to mock it in sys.modules so that when server imports it, it gets our mock
 mock_fastmcp = MagicMock()
 mock_mcp_instance = MagicMock()
 # The decorator should return the original function
+# For async functions, we can return the function itself, as we will await it in tests
 mock_mcp_instance.tool.return_value = lambda x: x
 mock_fastmcp.FastMCP.return_value = mock_mcp_instance
 sys.modules["fastmcp"] = mock_fastmcp
-
-# We also need to mock mcp.ClientSession and others if they cause import errors,
-# but let's try just fastmcp first as that's the main decorator.
-# Actually, server.py imports:
-# from fastmcp import FastMCP
-# from mcp import ClientSession, StdioServerParameters
-# from mcp.client.stdio import stdio_client
-# So we need to mock 'mcp' as well to avoid import errors if those are not installed in the env running this test
-# (although they should be if we are using the venv, but better safe)
 
 mock_mcp_pkg = MagicMock()
 sys.modules["mcp"] = mock_mcp_pkg
@@ -33,7 +24,7 @@ sys.modules["mcp.client.stdio"] = MagicMock()
 from mcp_llm_router.server import agent_llm_request, sessions, _get_api_key
 
 
-class TestDeepSeekRouting(unittest.TestCase):
+class TestDeepSeekRouting(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Create a dummy session
         self.session_id = "test-session"
@@ -51,12 +42,12 @@ class TestDeepSeekRouting(unittest.TestCase):
         key = _get_api_key("DEEPSEEK_API_KEY")
         self.assertEqual(key, "sk-bashrc-key")
 
-    @patch("mcp_llm_router.server.httpx.Client")
+    @patch("mcp_llm_router.server.httpx.AsyncClient")
     @patch.dict(
         os.environ,
         {"OPENAI_API_KEY": "sk-dummy-openai", "DEEPSEEK_API_KEY": "sk-dummy-deepseek"},
     )
-    def test_deepseek_routing_automatic(self, mock_client_cls):
+    async def test_deepseek_routing_automatic(self, mock_client_cls):
         # Mock the response
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -65,12 +56,12 @@ class TestDeepSeekRouting(unittest.TestCase):
         }
         mock_response.raise_for_status.return_value = None
 
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client_cls.return_value.__aenter__.return_value = mock_client
 
         # Call the function with a deepseek model
-        result = agent_llm_request(
+        result = await agent_llm_request(
             session_id=self.session_id, prompt="Hello", model="deepseek-chat"
         )
 
@@ -87,24 +78,26 @@ class TestDeepSeekRouting(unittest.TestCase):
         self.assertEqual(url, "https://api.deepseek.com/chat/completions")
         self.assertEqual(headers["Authorization"], "Bearer sk-dummy-deepseek")
 
-    @patch("mcp_llm_router.server.httpx.Client")
+    @patch("mcp_llm_router.server.httpx.AsyncClient")
     @patch.dict(
         os.environ,
         {"OPENAI_API_KEY": "sk-dummy-openai", "DEEPSEEK_API_KEY": "sk-dummy-deepseek"},
     )
-    def test_normal_routing(self, mock_client_cls):
+    async def test_normal_routing(self, mock_client_cls):
         # Mock response
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "choices": [{"message": {"content": "Hello from OpenAI"}}],
             "usage": {},
         }
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
-        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client_cls.return_value.__aenter__.return_value = mock_client
 
         # Call with normal model
-        agent_llm_request(session_id=self.session_id, prompt="Hello", model="gpt-4")
+        await agent_llm_request(
+            session_id=self.session_id, prompt="Hello", model="gpt-4"
+        )
 
         # Verify OpenAI URL and Key
         args, kwargs = mock_client.post.call_args

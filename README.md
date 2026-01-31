@@ -5,7 +5,10 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 ## Features
 
 - **Multi-Provider LLM Routing**: Route requests to OpenAI, OpenRouter, DeepInfra, and other OpenAI-compatible APIs
+- **Configurable \"Brain\" Model**: Pick DeepSeek reasoning or any OpenAI-compatible model as the main router brain
 - **Session Management**: Track agent sessions with goals, constraints, and event logging
+- **Workflow Gating (Judge Integration)**: Optional in-process mcp-as-a-judge tools for plan -> code -> test -> completion gating
+- **Local Memory Indexing**: Embeddings + optional reranking for retrieval (Ollama or OpenAI-compatible endpoints)
 - **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers
 - **Cross-Server Tool Calling**: Call tools across different MCP servers
 - **Universal MCP Compatibility**: Works with any MCP-compatible client (not tied to specific IDEs)
@@ -26,7 +29,7 @@ source .venv/bin/activate
 3. Install dependencies:
 ```bash
 pip install -U pip
-pip install "fastmcp<3" openai httpx mcp
+pip install -e .
 ```
 
 ## Configuration
@@ -50,9 +53,22 @@ pip install "fastmcp<3" openai httpx mcp
       "args": ["-m", "other_mcp_server"],
       "env": {}
     }
-  }
+}
 }
 ```
+
+### Example Config + Demo
+
+- `examples/mcp-config.deepseek-ollama.json` - DeepSeek brain + Ollama embeddings + judge history persistence.
+- `examples/demo_judge_gating.py` - End-to-end demo that indexes memory and walks a task through judge gating via `router_chat`.
+
+Run the demo:
+
+```bash
+python examples/demo_judge_gating.py --config examples/mcp-config.deepseek-ollama.json
+```
+
+Note: the demo skips `request_plan_approval` because it requires user elicitation. Ensure `DEEPSEEK_API_KEY` (or `LLM_API_KEY`) is set and Ollama is running for embeddings.
 
 ### Environment Variables
 
@@ -62,6 +78,59 @@ Set API keys in your environment or in the config:
 export OPENAI_API_KEY="sk-proj-..."
 export DEEPINFRA_API_KEY="..."
 export OPENROUTER_API_KEY="sk-or-..."
+export DEEPSEEK_API_KEY="..."
+```
+
+### Brain Configuration (Router LLM)
+
+```bash
+# Core brain settings
+export ROUTER_BRAIN_MODEL="deepseek-reasoner"
+export ROUTER_BRAIN_PROVIDER="deepseek"
+export ROUTER_BRAIN_API_KEY_ENV="DEEPSEEK_API_KEY"
+
+# Optional overrides
+export ROUTER_BRAIN_BASE_URL="https://api.deepseek.com"
+export ROUTER_BRAIN_MAX_TOKENS="4000"
+export ROUTER_BRAIN_TEMPERATURE="0.2"
+```
+
+You can also set the brain per session using the `configure_brain` tool.
+
+### Memory Configuration (Embeddings + Rerank)
+
+```bash
+# Storage paths
+export MCP_ROUTER_DATA_DIR="./.mcp-llm-router"
+export MCP_ROUTER_MEMORY_DB="./.mcp-llm-router/memory.db"
+
+# Embeddings (OpenAI-compatible)
+export EMBEDDINGS_PROVIDER="openai"
+export EMBEDDINGS_BASE_URL="https://api.openai.com/v1"
+export EMBEDDINGS_MODEL="text-embedding-3-small"
+export EMBEDDINGS_API_KEY_ENV="OPENAI_API_KEY"
+export EMBEDDINGS_PATH="/embeddings"
+
+# Embeddings (Ollama example)
+export EMBEDDINGS_PROVIDER="ollama"
+export EMBEDDINGS_BASE_URL="http://localhost:11434"
+export EMBEDDINGS_MODEL="nomic-embed-text"
+export EMBEDDINGS_PATH="/api/embeddings"
+
+# Rerank (OpenAI-compatible LLM rerank)
+export RERANK_PROVIDER="openai"
+export RERANK_BASE_URL="https://api.openai.com/v1"
+export RERANK_MODEL="gpt-4o-mini"
+export RERANK_API_KEY_ENV="OPENAI_API_KEY"
+export RERANK_PATH="/chat/completions"
+export RERANK_MODE="llm"
+```
+
+### Judge Persistence (mcp-as-a-judge)
+
+```bash
+# Persist judge conversation history + task metadata
+export MCP_JUDGE_DATABASE_URL="sqlite:///./.mcp-llm-router/judge_history.db"
 ```
 
 ## Usage
@@ -118,12 +187,34 @@ python mcp_manager.py call start_session '{"goal": "Test all servers"}'
 
 ### LLM Routing
 - `agent_llm_request(session_id, prompt, model, base_url, api_key_env, ...)` - Route to LLM providers
+- `configure_brain(...)` - Set the global or per-session brain model/settings
+- `get_brain_config(session_id)` - Read the active brain configuration
+- `router_chat(session_id, message, ...)` - Main brain chat (memory + workflow guidance)
+
+### Memory (Embeddings + Rerank)
+- `configure_memory(...)` - Set embedding/rerank configuration globally or per-session
+- `memory_index(namespace, texts, metadatas, doc_ids)` - Index texts into memory
+- `memory_search(namespace, query, top_k, rerank)` - Retrieve relevant memory hits
+- `memory_delete(namespace, doc_id)` - Delete one doc or a whole namespace
+- `memory_list_namespaces()` - List namespaces
+- `memory_stats()` - Show memory counts
 
 ### MCP Server Orchestration
 - `connect_mcp_server(server_name, command, args, env)` - Configure connection to another MCP server
 - `list_mcp_servers()` - List configured MCP server connections
 - `call_mcp_tool(server_name, tool_name, arguments)` - Call tools on other MCP servers
 - `list_mcp_tools(server_name)` - List tools available on another MCP server
+
+### Judge Tools (Optional, from mcp-as-a-judge)
+- `set_coding_task(...)`
+- `get_current_coding_task()`
+- `request_plan_approval(...)`
+- `judge_coding_plan(...)`
+- `judge_code_change(...)`
+- `judge_testing_implementation(...)`
+- `judge_coding_task_completion(...)`
+- `raise_obstacle(...)`
+- `raise_missing_requirements(...)`
 
 ## Integration with MCP Clients
 

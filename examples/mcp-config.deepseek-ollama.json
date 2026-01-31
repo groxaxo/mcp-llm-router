@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "llm-router": {
+      "command": "python",
+      "args": ["-m", "mcp_llm_router.server"],
+      "env": {
+        "DEEPSEEK_API_KEY": "sk-your-deepseek-key",
+        "ROUTER_BRAIN_MODEL": "deepseek-reasoner",
+        "ROUTER_BRAIN_PROVIDER": "deepseek",
+        "ROUTER_BRAIN_API_KEY_ENV": "DEEPSEEK_API_KEY",
+        "ROUTER_BRAIN_BASE_URL": "https://api.deepseek.com",
+        "EMBEDDINGS_PROVIDER": "ollama",
+        "EMBEDDINGS_BASE_URL": "http://localhost:11434",
+        "EMBEDDINGS_MODEL": "nomic-embed-text",
+        "EMBEDDINGS_PATH": "/api/embeddings",
+        "RERANK_PROVIDER": "none",
+        "MCP_ROUTER_DATA_DIR": "./.mcp-llm-router",
+        "MCP_ROUTER_MEMORY_DB": "./.mcp-llm-router/memory.db",
+        "MCP_JUDGE_DATABASE_URL": "sqlite:///./.mcp-llm-router/judge_history.db"
+      }
+    }
+  }
+}
