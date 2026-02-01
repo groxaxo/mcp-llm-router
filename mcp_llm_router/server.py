@@ -21,6 +21,7 @@ from mcp_llm_router.memory import (
     embed_texts,
     rerank_documents,
 )
+from mcp_llm_router.codex import CodexScanner
 from mcp_llm_router import judge_bridge
 
 # Initialize FastMCP server
@@ -44,9 +45,7 @@ os.environ.setdefault(
     f"sqlite:///{os.path.join(DATA_DIR, 'judge_history.db')}",
 )
 
-MEMORY_DB_PATH = os.getenv(
-    "MCP_ROUTER_MEMORY_DB", os.path.join(DATA_DIR, "memory.db")
-)
+MEMORY_DB_PATH = os.getenv("MCP_ROUTER_MEMORY_DB", os.path.join(DATA_DIR, "memory.db"))
 
 memory_store = MemoryStore(MEMORY_DB_PATH)
 brain_client = BrainClient(DEFAULT_PROVIDER_BASE_URLS)
@@ -67,6 +66,12 @@ def _default_brain_config() -> BrainConfig:
 
 def _default_memory_settings() -> MemorySettings:
     return MemorySettings(embedding=EmbeddingConfig(), rerank=RerankConfig())
+
+
+# Initialize Codex with default memory settings (will use global embedding config)
+codex_scanner = CodexScanner(
+    memory_store, _default_memory_settings().embedding, os.getcwd()
+)
 
 
 def _brain_config_from_dict(
@@ -440,7 +445,9 @@ def get_session_context(session_id: str) -> Dict[str, Any]:
         session["brain_config"] = _brain_config_to_dict(session["brain_config"])
     if session.get("memory_settings"):
         session["memory_settings"] = _memory_settings_to_dict(
-            _memory_settings_from_dict(session["memory_settings"], DEFAULT_MEMORY_SETTINGS)
+            _memory_settings_from_dict(
+                session["memory_settings"], DEFAULT_MEMORY_SETTINGS
+            )
         )
 
     return {"success": True, "session": session}
@@ -537,7 +544,9 @@ async def memory_index(
             {
                 "doc_id": doc_ids[idx] if doc_ids and idx < len(doc_ids) else None,
                 "content": text,
-                "metadata": metadatas[idx] if metadatas and idx < len(metadatas) else {},
+                "metadata": metadatas[idx]
+                if metadatas and idx < len(metadatas)
+                else {},
                 "embedding": embeddings[idx],
             }
         )
@@ -598,6 +607,18 @@ async def memory_stats() -> Dict[str, Any]:
 
 
 @mcp.tool()
+async def refresh_codex(path_pattern: str = "**/*.py") -> Dict[str, Any]:
+    """Scan and index local codebase."""
+    # Ensure scanner uses latest memory settings
+    codex_scanner.embedding_config = _get_session_memory_settings(None).embedding
+    try:
+        stats = await codex_scanner.scan_and_index(path_pattern)
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
 async def router_chat(
     session_id: str,
     message: str,
@@ -641,8 +662,10 @@ async def router_chat(
         conversation_service = judge_server.conversation_service
         if effective_task_id:
             try:
-                from mcp_as_a_judge.tasks.manager import load_task_metadata_from_history
-                from mcp_as_a_judge.workflow.workflow_guidance import (
+                from mcp_llm_router.judge.tasks.manager import (
+                    load_task_metadata_from_history,
+                )
+                from mcp_llm_router.judge.workflow.workflow_guidance import (
                     calculate_next_stage,
                 )
 
@@ -661,13 +684,17 @@ async def router_chat(
 
     if conversation_service is not None:
         with contextlib.suppress(Exception):
-            history_records = await conversation_service.load_filtered_context_for_enrichment(
-                session_id=session_id,
-                current_prompt=message,
-                ctx=ctx,
+            history_records = (
+                await conversation_service.load_filtered_context_for_enrichment(
+                    session_id=session_id,
+                    current_prompt=message,
+                    ctx=ctx,
+                )
             )
-            history_payload = conversation_service.format_conversation_history_as_json_array(
-                history_records
+            history_payload = (
+                conversation_service.format_conversation_history_as_json_array(
+                    history_records
+                )
             )
 
     # Build system prompt
@@ -702,16 +729,147 @@ async def router_chat(
 
     system_combined = "\n\n".join(system_parts)
 
+    system_combined = "\n\n".join(system_parts)
+
     messages = [
         {"role": "system", "content": system_combined},
         {"role": "user", "content": message},
     ]
 
-    try:
-        result = await brain_client.chat(messages, brain_config)
-        content = result["choices"][0]["message"]["content"]
-    except Exception as exc:
-        return {"success": False, "error": str(exc)}
+    # --- Tool Discovery & Definition ---
+    # 1. Internal tools (Codex, Memory, etc.) - Simplified for now, mapped manually or via reflection/hardcoding
+    # 2. External MCP tools
+
+    tools = []
+
+    # Add external MCP tools
+    available_servers = list(mcp_server_configs.keys())
+    for server_name in available_servers:
+        try:
+            session_obj = await connection_manager.get_session(
+                server_name, mcp_server_configs[server_name]["server_params"]
+            )
+            # mcp.client.session.ClientSession.list_tools returns ListToolsResult
+            tools_result = await session_obj.list_tools()
+            for tool in tools_result.tools:
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": f"{server_name}__{tool.name}",
+                            "description": tool.description,
+                            "parameters": tool.inputSchema,
+                        },
+                    }
+                )
+        except Exception as e:
+            _log_event(
+                session_id, "warning", f"Failed to list tools for {server_name}: {e}"
+            )
+
+    # Add internal memory/codex tools directly to the brain's capability
+    # (In a real implementation we'd reflectively get schemas, but here we manually add key ones)
+    tools.append(
+        {
+            "type": "function",
+            "function": {
+                "name": "memory_search",
+                "description": "Search local memory/codebase. Use namespace='codex' for code.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["namespace", "query"],
+                },
+            },
+        }
+    )
+
+    # --- ReAct Loop ---
+    MAX_TURNS = 10
+    final_content = ""
+    turn = 0
+
+    for turn in range(MAX_TURNS):
+        # Prepare BrainConfig with tools
+        current_config = brain_config
+        if tools:
+            # We need to construct a new config with tools
+            # BrainConfig is a dataclass, so we can replace
+            # BUT we need to put 'tools' in extra_body
+            current_config = _brain_config_from_dict(
+                {"extra_body": {"tools": tools}}, brain_config
+            )
+
+        try:
+            result = await brain_client.chat(messages, current_config)
+            response_msg = result["choices"][0]["message"]
+            content = response_msg.get("content")
+            tool_calls = response_msg.get("tool_calls")
+
+            # Append assistant message
+            messages.append(response_msg)
+
+            if not tool_calls:
+                final_content = content
+                break
+
+            # Process tool calls
+            for tool_call in tool_calls:
+                fn_name = tool_call["function"]["name"]
+                args_str = tool_call["function"]["arguments"]
+                call_id = tool_call["id"]
+
+                try:
+                    args = json.loads(args_str)
+
+                    # Execute
+                    tool_result = None
+
+                    # Handle Internal Logic
+                    if fn_name == "memory_search":
+                        tool_result = await memory_search(**args, session_id=session_id)
+
+                    # Handle External MCP Logic (server__tool format)
+                    elif "__" in fn_name:
+                        srv_name, tool_name = fn_name.split("__", 1)
+                        if srv_name in mcp_server_configs:
+                            session_obj = await connection_manager.get_session(
+                                srv_name, mcp_server_configs[srv_name]["server_params"]
+                            )
+                            # call_tool returns CallToolResult
+                            mcp_result = await session_obj.call_tool(
+                                tool_name, arguments=args
+                            )
+                            tool_result = mcp_result.content  # This is a list of blocks
+                            # Simplify for LLM:
+                            tool_result = [
+                                b.text for b in tool_result if b.type == "text"
+                            ]
+                            if len(tool_result) == 1:
+                                tool_result = tool_result[0]
+                        else:
+                            tool_result = f"Error: Server {srv_name} not found"
+                    else:
+                        tool_result = f"Error: Unknown tool {fn_name}"
+
+                except Exception as e:
+                    tool_result = f"Error executing {fn_name}: {str(e)}"
+
+                # Append tool result
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": str(tool_result),
+                    }
+                )
+
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
 
     # Save to conversation history if judge is available
     if conversation_service is not None:
@@ -726,7 +884,7 @@ async def router_chat(
                         "memory_namespace": memory_namespace,
                     }
                 ),
-                tool_output=json.dumps({"response": content}),
+                tool_output=json.dumps({"response": final_content}),
             )
 
     _log_event(
@@ -737,6 +895,7 @@ async def router_chat(
             "task_id": effective_task_id,
             "memory_namespace": memory_namespace,
             "model": brain_config.model,
+            "turns": turn + 1,
         },
     )
 
@@ -744,7 +903,7 @@ async def router_chat(
         "success": True,
         "session_id": session_id,
         "task_id": effective_task_id,
-        "content": content,
+        "content": final_content,
         "model": brain_config.model,
         "memory_hits": memory_hits,
         "workflow_guidance": workflow_guidance.model_dump(
@@ -871,262 +1030,15 @@ async def list_mcp_tools(server_name: str) -> Dict[str, Any]:
         }
 
 
-# --- Optional judge tool wrappers (mcp-as-a-judge) ---
-
-def _judge_unavailable(tool_name: str) -> Dict[str, Any]:
-    return {
-        "success": False,
-        "error": f"Judge tool '{tool_name}' unavailable - mcp-as-a-judge import failed.",
-        "details": judge_bridge.judge_import_error(),
-    }
-
-
-@mcp.tool()
-async def set_coding_task(
-    user_request: str,
-    task_title: str,
-    task_description: str,
-    ctx: Context,
-    task_size: Any = None,
-    task_id: str = "",
-    user_requirements: str = "",
-    state: Any = None,
-    tags: List[str] = [],  # noqa: B006
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("set_coding_task")
-    judge_server = judge_bridge.load_judge()
-    if task_size is None:
-        with contextlib.suppress(Exception):
-            from mcp_as_a_judge.models.task_metadata import TaskSize
-
-            task_size = TaskSize.M
-        if task_size is None:
-            task_size = "m"
-    if state is None:
-        with contextlib.suppress(Exception):
-            from mcp_as_a_judge.models.task_metadata import TaskState
-
-            state = TaskState.CREATED
-        if state is None:
-            state = "created"
-    return await judge_server.set_coding_task(
-        user_request=user_request,
-        task_title=task_title,
-        task_description=task_description,
-        ctx=ctx,
-        task_size=task_size,
-        task_id=task_id,
-        user_requirements=user_requirements,
-        state=state,
-        tags=tags,
-    )
-
-
-@mcp.tool()
-async def get_current_coding_task(ctx: Context) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("get_current_coding_task")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.get_current_coding_task(ctx=ctx)
-
-
-@mcp.tool()
-async def request_plan_approval(
-    plan: str,
-    design: str,
-    research: str,
-    task_id: str,
-    ctx: Context,
-    research_urls: List[str] = [],  # noqa: B006
-    problem_domain: str = "",
-    problem_non_goals: List[str] = [],  # noqa: B006
-    library_plan: List[Dict[str, Any]] = [],  # noqa: B006
-    internal_reuse_components: List[Dict[str, Any]] = [],  # noqa: B006
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("request_plan_approval")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.request_plan_approval(
-        plan=plan,
-        design=design,
-        research=research,
-        task_id=task_id,
-        ctx=ctx,
-        research_urls=research_urls,
-        problem_domain=problem_domain,
-        problem_non_goals=problem_non_goals,
-        library_plan=library_plan,
-        internal_reuse_components=internal_reuse_components,
-    )
-
-
-@mcp.tool()
-async def raise_obstacle(
-    problem: str,
-    research: str,
-    options: List[str],
-    ctx: Context,
-    task_id: str = "",
-    decision_area: str = "",
-    constraints: List[str] = [],  # noqa: B006
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("raise_obstacle")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.raise_obstacle(
-        problem=problem,
-        research=research,
-        options=options,
-        ctx=ctx,
-        task_id=task_id,
-        decision_area=decision_area,
-        constraints=constraints,
-    )
-
-
-@mcp.tool()
-async def raise_missing_requirements(
-    current_request: str,
-    identified_gaps: List[str],
-    specific_questions: List[str],
-    task_id: str,
-    ctx: Context,
-    decision_areas: List[str] = [],  # noqa: B006
-    options: List[str] = [],  # noqa: B006
-    constraints: List[str] = [],  # noqa: B006
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("raise_missing_requirements")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.raise_missing_requirements(
-        current_request=current_request,
-        identified_gaps=identified_gaps,
-        specific_questions=specific_questions,
-        task_id=task_id,
-        ctx=ctx,
-        decision_areas=decision_areas,
-        options=options,
-        constraints=constraints,
-    )
-
-
-@mcp.tool()
-async def judge_coding_task_completion(
-    task_id: str,
-    completion_summary: str,
-    requirements_met: List[str],
-    implementation_details: str,
-    ctx: Context,
-    remaining_work: List[str] = [],  # noqa: B006
-    quality_notes: str = "",
-    testing_status: str = "",
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("judge_coding_task_completion")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.judge_coding_task_completion(
-        task_id=task_id,
-        completion_summary=completion_summary,
-        requirements_met=requirements_met,
-        implementation_details=implementation_details,
-        ctx=ctx,
-        remaining_work=remaining_work,
-        quality_notes=quality_notes,
-        testing_status=testing_status,
-    )
-
-
-@mcp.tool()
-async def judge_coding_plan(
-    plan: str,
-    design: str,
-    research: str,
-    research_urls: List[str],
-    ctx: Context,
-    task_id: str = "",
-    context: str = "",
-    user_requirements: str = "",
-    problem_domain: str = "",
-    problem_non_goals: List[str] = [],  # noqa: B006
-    library_plan: List[Dict[str, Any]] = [],  # noqa: B006
-    internal_reuse_components: List[Dict[str, Any]] = [],  # noqa: B006
-    design_patterns: List[Dict[str, Any]] = [],  # noqa: B006
-    identified_risks: List[str] = [],  # noqa: B006
-    risk_mitigation_strategies: List[str] = [],  # noqa: B006
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("judge_coding_plan")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.judge_coding_plan(
-        plan=plan,
-        design=design,
-        research=research,
-        research_urls=research_urls,
-        ctx=ctx,
-        task_id=task_id,
-        context=context,
-        user_requirements=user_requirements,
-        problem_domain=problem_domain,
-        problem_non_goals=problem_non_goals,
-        library_plan=library_plan,
-        internal_reuse_components=internal_reuse_components,
-        design_patterns=design_patterns,
-        identified_risks=identified_risks,
-        risk_mitigation_strategies=risk_mitigation_strategies,
-    )
-
-
-@mcp.tool()
-async def judge_code_change(
-    code_change: str,
-    ctx: Context,
-    file_path: str = "File path not specified",
-    change_description: str = "Change description not provided",
-    task_id: str = "",
-    user_requirements: str = "",
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("judge_code_change")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.judge_code_change(
-        code_change=code_change,
-        ctx=ctx,
-        file_path=file_path,
-        change_description=change_description,
-        task_id=task_id,
-        user_requirements=user_requirements,
-    )
-
-
-@mcp.tool()
-async def judge_testing_implementation(
-    task_id: str,
-    test_summary: str,
-    test_files: List[str],
-    test_execution_results: str,
-    ctx: Context,
-    test_coverage_report: str = "",
-    test_types_implemented: List[str] = [],  # noqa: B006
-    testing_framework: str = "",
-    performance_test_results: str = "",
-    manual_test_notes: str = "",
-) -> Any:
-    if not judge_bridge.judge_available():
-        return _judge_unavailable("judge_testing_implementation")
-    judge_server = judge_bridge.load_judge()
-    return await judge_server.judge_testing_implementation(
-        task_id=task_id,
-        test_summary=test_summary,
-        test_files=test_files,
-        test_execution_results=test_execution_results,
-        ctx=ctx,
-        test_coverage_report=test_coverage_report,
-        test_types_implemented=test_types_implemented,
-        testing_framework=testing_framework,
-        performance_test_results=performance_test_results,
-        manual_test_notes=manual_test_notes,
-    )
+# --- Integrated Judge Tools ---
+if judge_bridge.judge_available():
+    try:
+        judge_server = judge_bridge.load_judge()
+        if hasattr(judge_server, "register_judge_tools"):
+            judge_server.register_judge_tools(mcp)
+            # print("Judge tools registered.")
+    except Exception as e:
+        print(f"Failed to register judge tools: {e}")
 
 
 if __name__ == "__main__":

@@ -1,17 +1,18 @@
 # MCP LLM Router
 
-A Model Context Protocol (MCP) server for routing LLM requests across multiple providers and connecting to other MCP servers.
+A Model Context Protocol (MCP) server for routing LLM requests across multiple providers and connecting to other MCP servers. All project documentation now lives in this README.
 
-## Features
+## Features (Unified Router + Judge)
 
-- **Multi-Provider LLM Routing**: Route requests to OpenAI, OpenRouter, DeepInfra, and other OpenAI-compatible APIs
-- **Configurable \"Brain\" Model**: Pick DeepSeek reasoning or any OpenAI-compatible model as the main router brain
-- **Session Management**: Track agent sessions with goals, constraints, and event logging
-- **Workflow Gating (Judge Integration)**: Optional in-process mcp-as-a-judge tools for plan -> code -> test -> completion gating
-- **Local Memory Indexing**: Embeddings + optional reranking for retrieval (Ollama or OpenAI-compatible endpoints)
-- **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers
-- **Cross-Server Tool Calling**: Call tools across different MCP servers
-- **Universal MCP Compatibility**: Works with any MCP-compatible client (not tied to specific IDEs)
+- **One server, two roles**: `mcp_llm_router.server` now ships Judge tools in-process—no separate `mcp-as-a-judge` server required.
+- **Multi-Provider LLM Routing**: Route requests to OpenAI, OpenRouter, DeepInfra, and other OpenAI-compatible APIs.
+- **Configurable "Brain" Model**: Choose DeepSeek reasoning or any OpenAI-compatible model as the router brain.
+- **Session Management**: Track agent sessions with goals, constraints, and event logging.
+- **Quality Gating (Judge)**: Plan → code → test → completion validation using the embedded Judge toolset.
+- **Local Memory Indexing**: Embeddings + optional reranking for retrieval (Ollama or OpenAI-compatible endpoints).
+- **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers.
+- **Cross-Server Tool Calling**: Call tools across different MCP servers.
+- **Universal MCP Compatibility**: Works with any MCP-compatible client (not tied to specific IDEs).
 
 ## Installation
 
@@ -20,16 +21,31 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 cd ~/mcp-llm-router
 ```
 
-2. Create and activate virtual environment:
+2. Create and activate a Conda environment (Python 3.12+):
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+conda create -n mcp-router python=3.12 -y
+conda activate mcp-router
 ```
 
 3. Install dependencies:
 ```bash
 pip install -U pip
 pip install -e .
+```
+
+If editable install fails or you only need dependencies, use the autoinstaller:
+```bash
+python3 scripts/auto_install.py --upgrade
+```
+
+## Conda Quickstart
+
+```bash
+conda create -n mcp-router python=3.12 -y
+conda activate mcp-router
+python -m pip install -U pip
+python -m pip install -e .
+python verify_server.py
 ```
 
 ## Configuration
@@ -126,7 +142,7 @@ export RERANK_PATH="/chat/completions"
 export RERANK_MODE="llm"
 ```
 
-### Judge Persistence (mcp-as-a-judge)
+### Judge Persistence (embedded Judge)
 
 ```bash
 # Persist judge conversation history + task metadata
@@ -205,7 +221,7 @@ python mcp_manager.py call start_session '{"goal": "Test all servers"}'
 - `call_mcp_tool(server_name, tool_name, arguments)` - Call tools on other MCP servers
 - `list_mcp_tools(server_name)` - List tools available on another MCP server
 
-### Judge Tools (Optional, from mcp-as-a-judge)
+### Judge Tools (built-in)
 - `set_coding_task(...)`
 - `get_current_coding_task()`
 - `request_plan_approval(...)`
@@ -326,7 +342,7 @@ opencode run "Explain Docker" --provider deepinfra --model meta-llama/Meta-Llama
 ### Running the Server Directly
 ```bash
 cd ~/mcp-llm-router
-source .venv/bin/activate
+conda activate mcp-router
 python -m mcp_llm_router.server
 ```
 
@@ -468,7 +484,7 @@ Retrieve full session history and events.
 Run the MCP server directly:
 ```bash
 cd ~/mcp-llm-router
-source .venv/bin/activate
+conda activate mcp-router
 python -m mcp_llm_router.server
 ```
 
