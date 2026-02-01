@@ -10,6 +10,7 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 - **Session Management**: Track agent sessions with goals, constraints, and event logging.
 - **Quality Gating (Judge)**: Plan → code → test → completion validation using the embedded Judge toolset.
 - **Local-First Memory**: **Default: Local embeddings via Ollama** with optional ChromaDB vector store for efficient semantic search. OpenAI-compatible endpoints supported as fallback.
+- **Local Cross-Encoder Reranking**: Optional privacy-focused reranking using Qwen3-Reranker-0.6B for improved search relevance without external API calls.
 - **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers.
 - **Cross-Server Tool Calling**: Call tools across different MCP servers.
 - **Universal MCP Compatibility**: Works with any MCP-compatible client (not tied to specific IDEs).
@@ -22,6 +23,7 @@ This project follows an **"all-local except the brain"** design philosophy:
 - ✅ **Vector Storage**: SQLite (default) or ChromaDB with HNSW indexing (optional RAG package)
 - ✅ **Document Chunking**: Token-based chunking with overlap (optional RAG package)
 - ✅ **Semantic Search**: Local cosine similarity with L2-normalized vectors
+- ✅ **Reranking**: Optional local cross-encoder reranking with Qwen3-Reranker-0.6B
 - 🌐 **LLM "Brain"**: Configurable external API (DeepSeek, OpenAI, etc.) for reasoning and generation
 
 **Why?** This architecture keeps your data and semantic search private and fast, while leveraging powerful external LLMs only for high-level reasoning tasks.
@@ -131,12 +133,20 @@ python verify_server.py
 ### Example Config + Demo
 
 - `examples/mcp-config.deepseek-ollama.json` - DeepSeek brain + Ollama embeddings + judge history persistence.
+- `examples/mcp-config.local-reranker.json` - DeepSeek brain + Ollama embeddings + local cross-encoder reranking.
 - `examples/demo_judge_gating.py` - End-to-end demo that indexes memory and walks a task through judge gating via `router_chat`.
+- `examples/local_reranker_example.py` - Example of using local cross-encoder reranking to improve search relevance.
 
 Run the demo:
 
 ```bash
 python examples/demo_judge_gating.py --config examples/mcp-config.deepseek-ollama.json
+```
+
+Run the local reranker example:
+
+```bash
+python examples/local_reranker_example.py
 ```
 
 Note: the demo skips `request_plan_approval` because it requires user elicitation. Ensure `DEEPSEEK_API_KEY` (or `LLM_API_KEY`) is set and Ollama is running for embeddings.
@@ -202,7 +212,27 @@ export EMBEDDINGS_PATH="/embeddings"
 
 #### Reranking (Optional)
 
-Reranking is optional and defaults to "none". For LLM-based reranking:
+Reranking is optional and defaults to "none". Three modes are available:
+
+##### 1. Local Cross-Encoder Reranking (Recommended for Privacy)
+
+Uses the local Qwen3-Reranker-0.6B model for reranking without external API calls:
+
+```bash
+# Local cross-encoder reranking (requires transformers and torch)
+export RERANK_PROVIDER="local"
+export RERANK_MODE="local"
+export RERANK_MODEL="tomaarsen/Qwen3-Reranker-0.6B-seq-cls"  # Default model
+```
+
+**Requirements**: 
+- Install PyTorch: `pip install torch`
+- Install Transformers: `pip install transformers`
+- The model will be automatically downloaded on first use (~1.2GB)
+
+##### 2. LLM-Based Reranking
+
+Uses an external LLM API for reranking:
 
 ```bash
 # Rerank using OpenAI-compatible LLM (optional)
@@ -212,7 +242,11 @@ export RERANK_MODEL="gpt-4o-mini"
 export RERANK_API_KEY_ENV="OPENAI_API_KEY"
 export RERANK_PATH="/chat/completions"
 export RERANK_MODE="llm"
+```
 
+##### 3. Disable Reranking
+
+```bash
 # Or disable reranking entirely (default)
 export RERANK_PROVIDER="none"
 ```

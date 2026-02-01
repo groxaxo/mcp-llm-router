@@ -27,6 +27,9 @@ DEFAULT_RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "none")
 DEFAULT_RERANK_PATH = os.getenv("RERANK_PATH", "/chat/completions")
 DEFAULT_RERANK_MODE = os.getenv("RERANK_MODE", "llm")
 
+# Known LLM model prefixes that are NOT HuggingFace model identifiers
+_LLM_MODEL_PREFIXES = ("gpt-", "claude-", "o1-", "deepseek-", "gemini-")
+
 
 @dataclass
 class EmbeddingConfig:
@@ -45,7 +48,7 @@ class RerankConfig:
     api_key_env: Optional[str] = os.getenv("RERANK_API_KEY_ENV", "OPENAI_API_KEY")
     model: str = DEFAULT_RERANK_MODEL
     path: str = DEFAULT_RERANK_PATH
-    mode: str = DEFAULT_RERANK_MODE  # "llm" or "api"
+    mode: str = DEFAULT_RERANK_MODE  # "llm", "api", or "local"
     temperature: float = 0.0
     max_tokens: int = 400
     timeout_s: float = 60.0
@@ -232,6 +235,11 @@ async def rerank_documents(
     if config.provider.lower() == "none" or not documents:
         return documents
 
+    if config.mode.lower() == "local":
+        reranked = await _rerank_with_local(query, documents, config)
+        if reranked:
+            return reranked
+
     if config.mode.lower() == "api":
         reranked = await _rerank_with_api(query, documents, config)
         if reranked:
@@ -345,6 +353,74 @@ def _l2_normalize(vec: Sequence[float]) -> List[float]:
     if norm == 0.0:
         return list(vec)
     return [x / norm for x in vec]
+
+
+async def _rerank_with_local(
+    query: str, documents: List[Dict[str, Any]], config: RerankConfig
+) -> List[Dict[str, Any]]:
+    """
+    Rerank documents using a local cross-encoder model from the rag package.
+    
+    This function uses the Qwen3-Reranker-0.6B model (or a custom model specified
+    in config.model) to perform local cross-encoder reranking without requiring
+    external API calls.
+    
+    Args:
+        query: The search query
+        documents: List of documents with 'content' field
+        config: Reranking configuration (model name taken from config.model)
+    
+    Returns:
+        Reranked list of documents sorted by relevance score
+    """
+    try:
+        from rag import Reranker
+    except (ImportError, OSError, RuntimeError):
+        # If rag package is not available or fails to load, return empty list
+        return []
+    
+    try:
+        # Extract just the text content for reranking
+        passages = [doc.get("content", "") for doc in documents]
+        
+        # Determine if the configured model is a HuggingFace model identifier
+        # HuggingFace models contain "/" or are not common LLM model names
+        model_name = None
+        if config.model:
+            # Check if it's NOT a known LLM model prefix
+            if not config.model.startswith(_LLM_MODEL_PREFIXES):
+                model_name = config.model
+        
+        reranker = Reranker(model_name=model_name)
+        
+        # Rerank returns list of (passage, score) tuples
+        ranked_results = await asyncio.to_thread(
+            reranker.rerank, query, passages, top_n=None
+        )
+        
+        # Map results back to original documents with scores
+        # Build a list to preserve order from reranker while handling duplicates
+        # Track which documents we've already used to handle duplicate content
+        used_indices = set()
+        reranked = []
+        
+        for passage, score in ranked_results:
+            # Find the first unused document with matching content
+            for idx, doc in enumerate(documents):
+                if idx not in used_indices and doc.get("content", "") == passage:
+                    doc_copy = dict(doc)
+                    doc_copy["rerank_score"] = score
+                    reranked.append(doc_copy)
+                    used_indices.add(idx)
+                    break
+        
+        return reranked
+        
+    except Exception as e:
+        # If local reranking fails, return empty list to fall back to other methods
+        import sys
+        print(f"Warning: Local reranking failed: {e}", file=sys.stderr)
+        return []
 
 
 async def _rerank_with_api(
