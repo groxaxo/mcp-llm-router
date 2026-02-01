@@ -29,7 +29,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mcp_llm_router"]
+include = ["mcp_llm_router", "rag"]
 
 [tool.setuptools.package-data]
 "mcp_llm_router.judge" = [

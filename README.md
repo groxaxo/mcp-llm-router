@@ -102,7 +102,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama pull qwen3-embedding:0.6b
 
 # Verify everything works
-python verify_server.py
+python scripts/verify_server.py
 ```
 
 ## Configuration
@@ -321,25 +321,25 @@ For enhanced semantic search with vector indexing and intelligent chunking, this
 #### Using the Server Runner
 ```bash
 # List configured servers
-python mcp_server_runner.py list
+python scripts/mcp_server_runner.py list
 
 # Run a specific server
-python mcp_server_runner.py run llm-router
+python scripts/mcp_server_runner.py run llm-router
 ```
 
 #### Using the Server Manager
 ```bash
 # Add a new server
-python mcp_manager.py add my-server python -m my_mcp_server
+python scripts/mcp_manager.py add my-server python -m my_mcp_server
 
 # List servers
-python mcp_manager.py list
+python scripts/mcp_manager.py list
 
 # Test server connection
-python mcp_manager.py test llm-router
+python scripts/mcp_manager.py test llm-router
 
 # Remove a server
-python mcp_manager.py remove my-server
+python scripts/mcp_manager.py remove my-server
 ```
 
 ### Connecting to MCP Servers
@@ -347,16 +347,16 @@ python mcp_manager.py remove my-server
 #### Using the MCP Client
 ```bash
 # List tools on a server
-python mcp_client.py list-tools llm-router
+python scripts/mcp_client.py list-tools llm-router
 
 # Call a tool on a server
-python mcp_client.py call-tool llm-router start_session '{"goal": "Test session"}'
+python scripts/mcp_client.py call-tool llm-router start_session '{"goal": "Test session"}'
 ```
 
 #### Using the Server Manager for Cross-Server Operations
 ```bash
 # Call a tool across all configured servers
-python mcp_manager.py call start_session '{"goal": "Test all servers"}'
+python scripts/mcp_manager.py call start_session '{"goal": "Test all servers"}'
 ```
 
 ## MCP Tools Available
@@ -496,10 +496,10 @@ The `opencode` command provides direct CLI access:
 
 ```bash
 # Basic usage
-opencode run "What is Python"
+scripts/opencode run "What is Python"
 
 # Use specific provider
-opencode run "Explain Docker" --provider deepinfra --model meta-llama/Meta-Llama-3.1-70B-Instruct
+scripts/opencode run "Explain Docker" --provider deepinfra --model meta-llama/Meta-Llama-3.1-70B-Instruct
 ```
 
 ## Development
@@ -517,10 +517,10 @@ python -m mcp_llm_router.server
 timeout 5 python -m mcp_llm_router.server
 
 # Test CLI
-opencode run "Hello world"
+scripts/opencode run "Hello world"
 
 # Test MCP client
-python mcp_client.py list-tools llm-router
+python scripts/mcp_client.py list-tools llm-router
 ```
 
 ## Architecture
@@ -564,13 +564,13 @@ MIT License - see LICENSE file for details.
 
 ```bash
 # Basic usage with OpenAI (default)
-opencode run "Explain quantum computing"
+scripts/opencode run "Explain quantum computing"
 
 # Use a specific provider
-opencode run "Write a Python function" --provider openrouter --model anthropic/claude-3-opus
+scripts/opencode run "Write a Python function" --provider openrouter --model anthropic/claude-3-opus
 
 # Use DeepInfra
-opencode run "Summarize this text" --provider deepinfra --model meta-llama/Llama-3.1-70B-Instruct
+scripts/opencode run "Summarize this text" --provider deepinfra --model meta-llama/Llama-3.1-70B-Instruct
 ```
 
 **Available providers:**

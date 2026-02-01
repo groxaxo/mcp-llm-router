@@ -16,7 +16,7 @@ class MCPServerManager:
     """Manager for MCP server connections and orchestration."""
 
     def __init__(self, config_path: str = None):
-        self.config_path = config_path or os.path.join(os.path.dirname(__file__), "mcp-config.json")
+        self.config_path = config_path or os.path.join(os.path.dirname(__file__), "..", "mcp-config.json")
         self.config = self.load_config()
         self.connections: Dict[str, Dict[str, Any]] = {}
 

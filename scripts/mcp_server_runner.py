@@ -22,7 +22,7 @@ def load_config(config_path: str) -> dict:
 def run_server(server_name: str, config_path: str = None):
     """Run a specific MCP server from configuration."""
     if config_path is None:
-        config_path = os.path.join(os.path.dirname(__file__), "mcp-config.json")
+        config_path = os.path.join(os.path.dirname(__file__), "..", "mcp-config.json")
 
     config = load_config(config_path)
 
@@ -60,7 +60,7 @@ def run_server(server_name: str, config_path: str = None):
 def list_servers(config_path: str = None):
     """List all configured MCP servers."""
     if config_path is None:
-        config_path = os.path.join(os.path.dirname(__file__), "mcp-config.json")
+        config_path = os.path.join(os.path.dirname(__file__), "..", "mcp-config.json")
 
     config = load_config(config_path)
 
