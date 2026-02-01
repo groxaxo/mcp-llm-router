@@ -98,16 +98,17 @@ async def example_local_reranking():
     print("4. After local cross-encoder reranking:")
     print()
     
+    def format_score(score):
+        """Helper to format rerank score for display."""
+        return f"{score:.4f}" if isinstance(score, float) else str(score)
+    
     try:
         reranked = await rerank_documents(query, documents, memory_settings.rerank)
         
         if reranked:
             for i, doc in enumerate(reranked, 1):
-                rerank_score = doc.get('rerank_score', 'N/A')
-                if isinstance(rerank_score, float):
-                    print(f"{i}. [Rerank: {rerank_score:.4f}] {doc['content'][:80]}...")
-                else:
-                    print(f"{i}. [Rerank: {rerank_score}] {doc['content'][:80]}...")
+                score_str = format_score(doc.get('rerank_score', 'N/A'))
+                print(f"{i}. [Rerank: {score_str}] {doc['content'][:80]}...")
         else:
             print("  (Reranking not available - requires PyTorch, transformers, and network access)")
             print("  Returned original ranking")

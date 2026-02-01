@@ -380,9 +380,15 @@ async def _rerank_with_local(
         # Extract just the text content for reranking
         passages = [doc.get("content", "") for doc in documents]
         
-        # Use the model name from config if specified, otherwise use default
-        # The config.model can be used to specify a different HuggingFace model
-        reranker = Reranker(model_name=config.model if config.model and config.model != "gpt-4o-mini" else None)
+        # Use the model name from config if specified and it's a HuggingFace model
+        # For local reranking, we expect model names like "tomaarsen/Qwen3-Reranker-0.6B-seq-cls"
+        # Default LLM models like "gpt-4o-mini" are not valid HuggingFace model names
+        model_name = None
+        if config.model and "/" in config.model:
+            # If model contains /, it's likely a HuggingFace model identifier
+            model_name = config.model
+        
+        reranker = Reranker(model_name=model_name)
         
         # Rerank returns list of (passage, score) tuples
         ranked_results = await asyncio.to_thread(
@@ -390,16 +396,20 @@ async def _rerank_with_local(
         )
         
         # Map results back to original documents with scores
-        # Create a mapping from passage text to original document
-        passage_to_doc = {doc.get("content", ""): doc for doc in documents}
-        
+        # Build a list to preserve order from reranker while handling duplicates
+        # Track which documents we've already used to handle duplicate content
+        used_indices = set()
         reranked = []
+        
         for passage, score in ranked_results:
-            doc = passage_to_doc.get(passage)
-            if doc:
-                doc_copy = dict(doc)
-                doc_copy["rerank_score"] = score
-                reranked.append(doc_copy)
+            # Find the first unused document with matching content
+            for idx, doc in enumerate(documents):
+                if idx not in used_indices and doc.get("content", "") == passage:
+                    doc_copy = dict(doc)
+                    doc_copy["rerank_score"] = score
+                    reranked.append(doc_copy)
+                    used_indices.add(idx)
+                    break
         
         return reranked
         

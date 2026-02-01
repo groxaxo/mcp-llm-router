@@ -32,7 +32,8 @@ async def test_rerank_routing():
         result = await rerank_documents("test", documents, config)
         # Local mode failed, so it should have fallen back to LLM which also failed
         # The function returns original docs when everything fails
-        assert len(result) >= 0, "Should return some result"
+        assert isinstance(result, list), "Should return a list"
+        assert len(result) > 0, "Should return some documents"
         print("✅ Test 2 passed: Local mode routing works (graceful fallback)")
     except Exception as e:
         print(f"⚠️  Test 2: Expected error in sandbox without network: {type(e).__name__}")
