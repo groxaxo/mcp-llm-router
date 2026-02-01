@@ -45,7 +45,7 @@ class RerankConfig:
     api_key_env: Optional[str] = os.getenv("RERANK_API_KEY_ENV", "OPENAI_API_KEY")
     model: str = DEFAULT_RERANK_MODEL
     path: str = DEFAULT_RERANK_PATH
-    mode: str = DEFAULT_RERANK_MODE  # "llm" or "api"
+    mode: str = DEFAULT_RERANK_MODE  # "llm", "api", or "local"
     temperature: float = 0.0
     max_tokens: int = 400
     timeout_s: float = 60.0
@@ -232,6 +232,11 @@ async def rerank_documents(
     if config.provider.lower() == "none" or not documents:
         return documents
 
+    if config.mode.lower() == "local":
+        reranked = await _rerank_with_local(query, documents, config)
+        if reranked:
+            return reranked
+
     if config.mode.lower() == "api":
         reranked = await _rerank_with_api(query, documents, config)
         if reranked:
@@ -345,6 +350,64 @@ def _l2_normalize(vec: Sequence[float]) -> List[float]:
     if norm == 0.0:
         return list(vec)
     return [x / norm for x in vec]
+
+
+async def _rerank_with_local(
+    query: str, documents: List[Dict[str, Any]], config: RerankConfig
+) -> List[Dict[str, Any]]:
+    """
+    Rerank documents using a local cross-encoder model from the rag package.
+    
+    This function uses the Qwen3-Reranker-0.6B model (or a custom model specified
+    in config.model) to perform local cross-encoder reranking without requiring
+    external API calls.
+    
+    Args:
+        query: The search query
+        documents: List of documents with 'content' field
+        config: Reranking configuration (model name taken from config.model)
+    
+    Returns:
+        Reranked list of documents sorted by relevance score
+    """
+    try:
+        from rag import Reranker
+    except (ImportError, OSError, RuntimeError):
+        # If rag package is not available or fails to load, return empty list
+        return []
+    
+    try:
+        # Extract just the text content for reranking
+        passages = [doc.get("content", "") for doc in documents]
+        
+        # Use the model name from config if specified, otherwise use default
+        # The config.model can be used to specify a different HuggingFace model
+        reranker = Reranker(model_name=config.model if config.model and config.model != "gpt-4o-mini" else None)
+        
+        # Rerank returns list of (passage, score) tuples
+        ranked_results = await asyncio.to_thread(
+            reranker.rerank, query, passages, top_n=None
+        )
+        
+        # Map results back to original documents with scores
+        # Create a mapping from passage text to original document
+        passage_to_doc = {doc.get("content", ""): doc for doc in documents}
+        
+        reranked = []
+        for passage, score in ranked_results:
+            doc = passage_to_doc.get(passage)
+            if doc:
+                doc_copy = dict(doc)
+                doc_copy["rerank_score"] = score
+                reranked.append(doc_copy)
+        
+        return reranked
+        
+    except Exception as e:
+        # If local reranking fails, return empty list to fall back to other methods
+        import sys
+        print(f"Warning: Local reranking failed: {e}", file=sys.stderr)
+        return []
 
 
 async def _rerank_with_api(
