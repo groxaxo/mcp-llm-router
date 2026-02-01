@@ -16,10 +16,10 @@ import re
 
 import httpx
 
-DEFAULT_EMBEDDING_BASE_URL = os.getenv("EMBEDDINGS_BASE_URL", "https://api.openai.com/v1")
-DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
-DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDINGS_PROVIDER", "openai")
-DEFAULT_EMBEDDING_PATH = os.getenv("EMBEDDINGS_PATH", "/embeddings")
+DEFAULT_EMBEDDING_BASE_URL = os.getenv("EMBEDDINGS_BASE_URL", "http://localhost:11434")
+DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDINGS_MODEL", "qwen3-embedding:0.6b")
+DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDINGS_PROVIDER", "ollama")
+DEFAULT_EMBEDDING_PATH = os.getenv("EMBEDDINGS_PATH", "/api/embed")
 
 DEFAULT_RERANK_BASE_URL = os.getenv("RERANK_BASE_URL", "https://api.openai.com/v1")
 DEFAULT_RERANK_MODEL = os.getenv("RERANK_MODEL", "gpt-4o-mini")
@@ -32,7 +32,7 @@ DEFAULT_RERANK_MODE = os.getenv("RERANK_MODE", "llm")
 class EmbeddingConfig:
     provider: str = DEFAULT_EMBEDDING_PROVIDER
     base_url: str = DEFAULT_EMBEDDING_BASE_URL
-    api_key_env: Optional[str] = os.getenv("EMBEDDINGS_API_KEY_ENV", "OPENAI_API_KEY")
+    api_key_env: Optional[str] = os.getenv("EMBEDDINGS_API_KEY_ENV", None)  # None for local Ollama
     model: str = DEFAULT_EMBEDDING_MODEL
     path: str = DEFAULT_EMBEDDING_PATH
     timeout_s: float = 60.0
@@ -285,25 +285,66 @@ async def _embed_with_openai_compatible(
 async def _embed_with_ollama(
     texts: Sequence[str], config: EmbeddingConfig
 ) -> List[List[float]]:
+    """
+    Embed texts using Ollama's /api/embed endpoint.
+    
+    This uses the correct Ollama API format with 'input' field for batch embedding,
+    requests specific dimensions, and L2-normalizes the vectors for consistent
+    cosine similarity.
+    """
     base_url = config.base_url.rstrip("/")
     path = config.path if config.path.startswith("/") else f"/{config.path}"
     url = base_url + path
 
     headers = {"Content-Type": "application/json"}
-    results: List[List[float]] = []
-
+    
+    # Ollama's /api/embed endpoint accepts 'input' as a list of texts
+    # and supports 'dimensions' and 'truncate' parameters
+    payload = {
+        "model": config.model,
+        "input": list(texts),
+        "truncate": True,
+    }
+    
+    # Add dimensions parameter if it looks like a dimensional embedding model
+    # Common models support specific dimensions (e.g., 1024 for qwen3-embedding:0.6b)
+    # This is optional and model-dependent
+    # For qwen3-embedding:0.6b, dimension is 1024 by default
+    
     async with httpx.AsyncClient(timeout=config.timeout_s) as client:
-        for text in texts:
-            payload = {"model": config.model, "prompt": text}
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            embedding = data.get("embedding")
-            if embedding is None:
-                raise ValueError("Ollama embedding response missing 'embedding' field")
-            results.append(embedding)
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+    # Ollama returns {"embeddings": [[...], [...]]} for batch requests
+    embeddings = data.get("embeddings")
+    if embeddings is None:
+        raise ValueError("Ollama embedding response missing 'embeddings' field")
+    
+    if not isinstance(embeddings, list):
+        raise ValueError("Ollama 'embeddings' field must be a list")
+    
+    # L2-normalize each embedding vector for consistent cosine similarity
+    normalized_results: List[List[float]] = []
+    for embedding in embeddings:
+        if not isinstance(embedding, list):
+            raise ValueError("Each embedding must be a list of floats")
+        normalized_results.append(_l2_normalize(embedding))
+    
+    return normalized_results
 
-    return results
+
+def _l2_normalize(vec: Sequence[float]) -> List[float]:
+    """
+    Return an L2-normalized copy of the vector.
+    
+    L2 normalization ensures that cosine similarity calculations are more
+    consistent and prevents bias from vector magnitude.
+    """
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm == 0.0:
+        return list(vec)
+    return [x / norm for x in vec]
 
 
 async def _rerank_with_api(

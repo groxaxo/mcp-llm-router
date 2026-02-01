@@ -1,6 +1,6 @@
 # MCP LLM Router
 
-A Model Context Protocol (MCP) server for routing LLM requests across multiple providers and connecting to other MCP servers. All project documentation now lives in this README.
+A Model Context Protocol (MCP) server for routing LLM requests across multiple providers and connecting to other MCP servers. **Designed with an "all-local except the brain" architecture** for privacy and control.
 
 ## Features (Unified Router + Judge)
 
@@ -9,12 +9,26 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 - **Configurable "Brain" Model**: Choose DeepSeek reasoning or any OpenAI-compatible model as the router brain.
 - **Session Management**: Track agent sessions with goals, constraints, and event logging.
 - **Quality Gating (Judge)**: Plan → code → test → completion validation using the embedded Judge toolset.
-- **Local Memory Indexing**: Embeddings + optional reranking for retrieval (Ollama or OpenAI-compatible endpoints).
+- **Local-First Memory**: **Default: Local embeddings via Ollama** with optional ChromaDB vector store for efficient semantic search. OpenAI-compatible endpoints supported as fallback.
 - **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers.
 - **Cross-Server Tool Calling**: Call tools across different MCP servers.
 - **Universal MCP Compatibility**: Works with any MCP-compatible client (not tied to specific IDEs).
 
+## Architecture: All-Local Except the Brain
+
+This project follows an **"all-local except the brain"** design philosophy:
+
+- ✅ **Embeddings**: Run locally via Ollama (default: `qwen3-embedding:0.6b`)
+- ✅ **Vector Storage**: SQLite (default) or ChromaDB with HNSW indexing (optional RAG package)
+- ✅ **Document Chunking**: Token-based chunking with overlap (optional RAG package)
+- ✅ **Semantic Search**: Local cosine similarity with L2-normalized vectors
+- 🌐 **LLM "Brain"**: Configurable external API (DeepSeek, OpenAI, etc.) for reasoning and generation
+
+**Why?** This architecture keeps your data and semantic search private and fast, while leveraging powerful external LLMs only for high-level reasoning tasks.
+
 ## Installation
+
+### 1. Install Python Dependencies
 
 1. Clone or navigate to this directory:
 ```bash
@@ -38,6 +52,41 @@ If editable install fails or you only need dependencies, use the autoinstaller:
 python3 scripts/auto_install.py --upgrade
 ```
 
+### 2. Install and Setup Ollama (for Local Embeddings)
+
+**Required for default local embeddings functionality.**
+
+1. Install Ollama from [https://ollama.ai](https://ollama.ai) or:
+   ```bash
+   # Linux/macOS
+   curl -fsSL https://ollama.ai/install.sh | sh
+   ```
+
+2. Pull the default embedding model:
+   ```bash
+   ollama pull qwen3-embedding:0.6b
+   ```
+
+3. Verify Ollama is running:
+   ```bash
+   curl http://localhost:11434/api/version
+   ```
+
+   Ollama should start automatically. If not, run:
+   ```bash
+   ollama serve
+   ```
+
+**Alternative Embedding Models:**
+- `nomic-embed-text` - General-purpose embeddings
+- `mxbai-embed-large` - Larger model for better quality
+- Any other Ollama-compatible embedding model
+
+To use a different model, set the environment variable:
+```bash
+export EMBEDDINGS_MODEL="nomic-embed-text"
+```
+
 ## Conda Quickstart
 
 ```bash
@@ -45,6 +94,12 @@ conda create -n mcp-router python=3.12 -y
 conda activate mcp-router
 python -m pip install -U pip
 python -m pip install -e .
+
+# Install Ollama and pull embedding model
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen3-embedding:0.6b
+
+# Verify everything works
 python verify_server.py
 ```
 
@@ -115,31 +170,51 @@ You can also set the brain per session using the `configure_brain` tool.
 
 ### Memory Configuration (Embeddings + Rerank)
 
+#### Default: Local Ollama Embeddings (Recommended)
+
+**No API keys required!** The default configuration uses local Ollama embeddings:
+
 ```bash
 # Storage paths
 export MCP_ROUTER_DATA_DIR="./.mcp-llm-router"
 export MCP_ROUTER_MEMORY_DB="./.mcp-llm-router/memory.db"
 
-# Embeddings (OpenAI-compatible)
+# Local embeddings via Ollama (DEFAULT - no API key needed)
+export EMBEDDINGS_PROVIDER="ollama"
+export EMBEDDINGS_BASE_URL="http://localhost:11434"
+export EMBEDDINGS_MODEL="qwen3-embedding:0.6b"
+export EMBEDDINGS_PATH="/api/embed"
+# No EMBEDDINGS_API_KEY_ENV needed for local Ollama!
+```
+
+#### Alternative: OpenAI-Compatible Embeddings
+
+If you prefer cloud-based embeddings:
+
+```bash
+# Embeddings via OpenAI
 export EMBEDDINGS_PROVIDER="openai"
 export EMBEDDINGS_BASE_URL="https://api.openai.com/v1"
 export EMBEDDINGS_MODEL="text-embedding-3-small"
 export EMBEDDINGS_API_KEY_ENV="OPENAI_API_KEY"
 export EMBEDDINGS_PATH="/embeddings"
+```
 
-# Embeddings (Ollama example)
-export EMBEDDINGS_PROVIDER="ollama"
-export EMBEDDINGS_BASE_URL="http://localhost:11434"
-export EMBEDDINGS_MODEL="nomic-embed-text"
-export EMBEDDINGS_PATH="/api/embeddings"
+#### Reranking (Optional)
 
-# Rerank (OpenAI-compatible LLM rerank)
+Reranking is optional and defaults to "none". For LLM-based reranking:
+
+```bash
+# Rerank using OpenAI-compatible LLM (optional)
 export RERANK_PROVIDER="openai"
 export RERANK_BASE_URL="https://api.openai.com/v1"
 export RERANK_MODEL="gpt-4o-mini"
 export RERANK_API_KEY_ENV="OPENAI_API_KEY"
 export RERANK_PATH="/chat/completions"
 export RERANK_MODE="llm"
+
+# Or disable reranking entirely (default)
+export RERANK_PROVIDER="none"
 ```
 
 ### Judge Persistence (embedded Judge)
@@ -148,6 +223,62 @@ export RERANK_MODE="llm"
 # Persist judge conversation history + task metadata
 export MCP_JUDGE_DATABASE_URL="sqlite:///./.mcp-llm-router/judge_history.db"
 ```
+
+### Advanced: ChromaDB + Token Chunking (RAG Package)
+
+For enhanced semantic search with vector indexing and intelligent chunking, this repository includes an optional `rag` package that provides:
+
+- **Token-based chunking** with overlap for consistent semantic granularity
+- **ChromaDB vector store** with HNSW indexing for fast similarity search
+- **L2-normalized embeddings** for consistent cosine similarity
+- **Batch embedding** and efficient upserts
+
+#### Using the RAG Package
+
+1. **Install additional dependencies** (already included in `pyproject.toml`):
+   ```bash
+   pip install -e .  # chromadb, transformers are now included
+   ```
+
+2. **Index your codebase**:
+   ```bash
+   python -m rag.main --path . --exts .py,.md --interactive
+   ```
+
+   This will:
+   - Scan the current directory for `.py` and `.md` files
+   - Chunk them into 400-token segments with 80-token overlap
+   - Embed using Ollama (`qwen3-embedding:0.6b`)
+   - Store in ChromaDB at `data/chroma/`
+   - Enter interactive mode for testing queries
+
+3. **Use in your code**:
+   ```python
+   from rag.retriever import retrieve
+   from rag.indexer import index_path
+   
+   # Index documents
+   stats = index_path("/path/to/docs", exts=[".py", ".md"])
+   print(f"Indexed {stats['files_indexed']} files")
+   
+   # Retrieve relevant chunks
+   results = retrieve("How does authentication work?", top_k=5)
+   for hit in results:
+       print(f"Score: {hit['distance']:.4f}")
+       print(f"File: {hit['meta']['path']}")
+       print(f"Content: {hit['doc']}\n")
+   ```
+
+**RAG Package Components:**
+- `rag/embedding_config.py` - Configuration constants
+- `rag/chunker.py` - Token-based text chunking
+- `rag/ollama_embedder.py` - Ollama embedding with normalization
+- `rag/chroma_store.py` - ChromaDB initialization and management
+- `rag/indexer.py` - Document indexing pipeline
+- `rag/retriever.py` - Vector search and retrieval
+- `rag/main.py` - CLI for indexing and queries
+
+**Note:** The RAG package is a self-contained enhancement. The core MCP server works with its built-in SQLite memory store without requiring ChromaDB.
 
 ## Usage
 
@@ -361,26 +492,36 @@ python mcp_client.py list-tools llm-router
 ## Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐
-│   MCP Client    │◄──►│  LLM Router MCP  │
-│ (Claude, etc.)  │    │     Server       │
-└─────────────────┘    └──────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │  LLM Providers   │
-                       │ • OpenAI         │
-                       │ • OpenRouter     │
-                       │ • DeepInfra      │
-                       └──────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │ Other MCP Servers│
-                       │ • File system    │
-                       │ • Database       │
-                       │ • APIs           │
-                       └──────────────────┘
+┌─────────────────┐    ┌──────────────────────────────────────┐
+│   MCP Client    │◄──►│     LLM Router MCP Server            │
+│ (Claude, etc.)  │    │  ┌────────────────────────────────┐  │
+└─────────────────┘    │  │  Session & Memory Management   │  │
+                       │  │  • SQLite/ChromaDB (local)     │  │
+                       │  │  • Ollama Embeddings (local)   │  │
+                       │  │  • L2-normalized vectors       │  │
+                       │  └────────────────────────────────┘  │
+                       │                │                     │
+                       │                ▼                     │
+                       │  ┌────────────────────────────────┐  │
+                       │  │  Brain (External LLM API)      │  │
+                       │  │  • DeepSeek / OpenAI / etc.    │  │
+                       │  │  • Reasoning & Generation      │  │
+                       │  └────────────────────────────────┘  │
+                       └──────────────────────────────────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────┐
+                              │ Other MCP Servers│
+                              │ • File system    │
+                              │ • Database       │
+                              │ • APIs           │
+                              └──────────────────┘
+
+All-Local Except the Brain:
+  ✅ Embeddings: Ollama (local, no API key)
+  ✅ Vector Store: SQLite or ChromaDB (local)
+  ✅ Semantic Search: Local cosine similarity
+  🌐 LLM Brain: External API (configurable)
 ```
 
 ## License
