@@ -1,0 +1,1 @@
+"""High-level package for indexing and retrieving local files using Qwen embeddings."""
