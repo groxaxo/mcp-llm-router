@@ -49,12 +49,17 @@ async def test_local_reranker():
         model="tomaarsen/Qwen3-Reranker-0.6B-seq-cls",
     )
     
+    def format_score(score):
+        """Format rerank score for display."""
+        return f"{score:.4f}" if isinstance(score, float) else str(score)
+    
     try:
         reranked = await rerank_documents(query, documents, config)
         
         print("Reranked results:")
         for i, doc in enumerate(reranked, 1):
-            print(f"{i}. [Score: {doc.get('rerank_score', 'N/A'):.4f}] {doc['content'][:80]}...")
+            score_str = format_score(doc.get('rerank_score', 'N/A'))
+            print(f"{i}. [Score: {score_str}] {doc['content'][:80]}...")
         
         print("\n✅ Local reranker integration test passed!")
         return True

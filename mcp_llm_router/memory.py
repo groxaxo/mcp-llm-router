@@ -27,6 +27,9 @@ DEFAULT_RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "none")
 DEFAULT_RERANK_PATH = os.getenv("RERANK_PATH", "/chat/completions")
 DEFAULT_RERANK_MODE = os.getenv("RERANK_MODE", "llm")
 
+# Known LLM model prefixes that are NOT HuggingFace model identifiers
+_LLM_MODEL_PREFIXES = ("gpt-", "claude-", "o1-", "deepseek-", "gemini-")
+
 
 @dataclass
 class EmbeddingConfig:
@@ -380,13 +383,13 @@ async def _rerank_with_local(
         # Extract just the text content for reranking
         passages = [doc.get("content", "") for doc in documents]
         
-        # Use the model name from config if specified and it's a HuggingFace model
-        # For local reranking, we expect model names like "tomaarsen/Qwen3-Reranker-0.6B-seq-cls"
-        # Default LLM models like "gpt-4o-mini" are not valid HuggingFace model names
+        # Determine if the configured model is a HuggingFace model identifier
+        # HuggingFace models contain "/" or are not common LLM model names
         model_name = None
-        if config.model and "/" in config.model:
-            # If model contains /, it's likely a HuggingFace model identifier
-            model_name = config.model
+        if config.model:
+            # Check if it's NOT a known LLM model prefix
+            if not config.model.startswith(_LLM_MODEL_PREFIXES):
+                model_name = config.model
         
         reranker = Reranker(model_name=model_name)
         
