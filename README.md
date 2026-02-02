@@ -114,6 +114,45 @@ Set via environment variable:
 export EMBEDDINGS_MODEL="nomic-embed-text"
 ```
 
+## Project Structure
+
+```
+mcp-llm-router/
+├── install.sh              # Automated installation script
+├── README.md               # This file
+├── pyproject.toml          # Python package configuration
+│
+├── mcp_llm_router/         # Main package
+│   ├── server.py           # MCP server entry point
+│   ├── brain.py            # LLM routing logic
+│   ├── memory.py           # Memory management (embeddings, search, rerank)
+│   ├── codex.py            # MCP server orchestration
+│   └── judge/              # Embedded judge tools for quality gating
+│
+├── rag/                    # Optional RAG package (ChromaDB, chunking)
+│   ├── main.py             # CLI for indexing and queries
+│   ├── indexer.py          # Document indexing
+│   ├── retriever.py        # Vector search
+│   └── reranker.py         # Local cross-encoder reranking
+│
+├── scripts/                # Utility scripts
+│   ├── verify_server.py    # Installation verification
+│   ├── opencode            # CLI tool for direct LLM requests
+│   ├── mcp_client.py       # MCP client for testing
+│   └── mcp_manager.py      # MCP server management
+│
+├── examples/               # Example configurations and demos
+│   ├── demo_judge_gating.py          # End-to-end judge workflow demo
+│   ├── local_reranker_example.py     # Local reranking example
+│   ├── mcp-config.deepseek-ollama.json
+│   └── mcp-config.local-reranker.json
+│
+└── tests/                  # Test suite
+    ├── test_server.py
+    ├── test_mcp.py
+    └── test_local_reranker.py
+```
+
 ## Configuration
 
 ### MCP Server Configuration (`mcp-config.json`)
