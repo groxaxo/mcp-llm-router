@@ -161,10 +161,18 @@ echo ""
 echo -e "${YELLOW}2. Configure your MCP client:${NC}"
 echo "   Add this to your MCP config file:"
 echo ""
+
+# Determine Python path based on OS
+if [[ "$OS" == "windows" ]]; then
+    PYTHON_PATH="${SCRIPT_DIR}/.venv/Scripts/python.exe"
+else
+    PYTHON_PATH="${SCRIPT_DIR}/.venv/bin/python"
+fi
+
 echo "   {"
 echo "     \"mcpServers\": {"
 echo "       \"llm-router\": {"
-echo "         \"command\": \"${SCRIPT_DIR}/.venv/bin/python\","
+echo "         \"command\": \"${PYTHON_PATH}\","
 echo "         \"args\": [\"-m\", \"mcp_llm_router.server\"],"
 echo "         \"env\": {"
 echo "           \"OPENAI_API_KEY\": \"your-key-here\","
