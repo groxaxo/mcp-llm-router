@@ -49,3 +49,12 @@ Thumbs.db
 .coverage
 htmlcov/
 repro_issue.py
+
+# MCP Router data
+.mcp-llm-router/
+*.db
+*.db-journal
+
+# ChromaDB
+data/
+chroma/
