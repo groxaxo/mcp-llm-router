@@ -1,3 +1,18 @@
+```
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║   ███╗   ███╗ ██████╗██████╗     ██╗     ██╗     ███╗   ███╗║
+║   ████╗ ████║██╔════╝██╔══██╗    ██║     ██║     ████╗ ████║║
+║   ██╔████╔██║██║     ██████╔╝    ██║     ██║     ██╔████╔██║║
+║   ██║╚██╔╝██║██║     ██╔═══╝     ██║     ██║     ██║╚██╔╝██║║
+║   ██║ ╚═╝ ██║╚██████╗██║         ███████╗███████╗██║ ╚═╝ ██║║
+║   ╚═╝     ╚═╝ ╚═════╝╚═╝         ╚══════╝╚══════╝╚═╝     ╚═╝║
+║                                                            ║
+║                    L L M   R O U T E R                     ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+```
+
 # MCP LLM Router
 
 A Model Context Protocol (MCP) server for routing LLM requests across multiple providers and connecting to other MCP servers. **Designed with an "all-local except the brain" architecture** for privacy and control.
@@ -30,79 +45,112 @@ This project follows an **"all-local except the brain"** design philosophy:
 
 ## Installation
 
-### 1. Install Python Dependencies
+### Quick Install (Recommended)
 
-1. Clone or navigate to this directory:
+**One-command automated installation:**
+
 ```bash
-cd ~/mcp-llm-router
+./install.sh
 ```
 
-2. Create and activate a Conda environment (Python 3.12+):
+This script will:
+- ✅ Create a Python virtual environment
+- ✅ Install all dependencies from `pyproject.toml`
+- ✅ Check for Ollama installation
+- ✅ Verify the setup
+- ✅ Display next steps with your specific paths
+
+### Manual Installation
+
+If you prefer manual installation or need a Conda environment:
+
 ```bash
+# Clone the repository
+git clone https://github.com/groxaxo/mcp-llm-router.git
+cd mcp-llm-router
+
+# Option 1: Using venv (recommended)
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -U pip
+pip install -e .
+
+# Option 2: Using Conda
 conda create -n mcp-router python=3.12 -y
 conda activate mcp-router
-```
-
-3. Install dependencies:
-```bash
 pip install -U pip
 pip install -e .
 ```
 
-If editable install fails or you only need dependencies, use the autoinstaller:
+### Ollama Setup (Required for Local Embeddings)
+
+**Install Ollama for local, privacy-focused embeddings:**
+
 ```bash
-python3 scripts/auto_install.py --upgrade
+# Linux/macOS
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Or download from https://ollama.ai
 ```
 
-### 2. Install and Setup Ollama (for Local Embeddings)
+**Pull the embedding model:**
 
-**Required for default local embeddings functionality.**
+```bash
+ollama pull qwen3-embedding:0.6b
+```
 
-1. Install Ollama from [https://ollama.ai](https://ollama.ai) or:
-   ```bash
-   # Linux/macOS
-   curl -fsSL https://ollama.ai/install.sh | sh
-   ```
+**Verify Ollama is running:**
 
-2. Pull the default embedding model:
-   ```bash
-   ollama pull qwen3-embedding:0.6b
-   ```
-
-3. Verify Ollama is running:
-   ```bash
-   curl http://localhost:11434/api/version
-   ```
-
-   Ollama should start automatically. If not, run:
-   ```bash
-   ollama serve
-   ```
+```bash
+curl http://localhost:11434/api/version
+```
 
 **Alternative Embedding Models:**
 - `nomic-embed-text` - General-purpose embeddings
 - `mxbai-embed-large` - Larger model for better quality
-- Any other Ollama-compatible embedding model
 
-To use a different model, set the environment variable:
+Set via environment variable:
 ```bash
 export EMBEDDINGS_MODEL="nomic-embed-text"
 ```
 
-## Conda Quickstart
+## Project Structure
 
-```bash
-conda create -n mcp-router python=3.12 -y
-conda activate mcp-router
-python -m pip install -U pip
-python -m pip install -e .
-
-# Install Ollama and pull embedding model
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull qwen3-embedding:0.6b
-
-# Verify everything works
-python scripts/verify_server.py
+```
+mcp-llm-router/
+├── install.sh              # Automated installation script
+├── README.md               # This file
+├── pyproject.toml          # Python package configuration
+│
+├── mcp_llm_router/         # Main package
+│   ├── server.py           # MCP server entry point
+│   ├── brain.py            # LLM routing logic
+│   ├── memory.py           # Memory management (embeddings, search, rerank)
+│   ├── codex.py            # MCP server orchestration
+│   └── judge/              # Embedded judge tools for quality gating
+│
+├── rag/                    # Optional RAG package (ChromaDB, chunking)
+│   ├── main.py             # CLI for indexing and queries
+│   ├── indexer.py          # Document indexing
+│   ├── retriever.py        # Vector search
+│   └── reranker.py         # Local cross-encoder reranking
+│
+├── scripts/                # Utility scripts
+│   ├── verify_server.py    # Installation verification
+│   ├── opencode            # CLI tool for direct LLM requests
+│   ├── mcp_client.py       # MCP client for testing
+│   └── mcp_manager.py      # MCP server management
+│
+├── examples/               # Example configurations and demos
+│   ├── demo_judge_gating.py          # End-to-end judge workflow demo
+│   ├── local_reranker_example.py     # Local reranking example
+│   ├── mcp-config.deepseek-ollama.json
+│   └── mcp-config.local-reranker.json
+│
+└── tests/                  # Test suite
+    ├── test_server.py
+    ├── test_mcp.py
+    └── test_local_reranker.py
 ```
 
 ## Configuration
