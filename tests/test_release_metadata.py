@@ -5,7 +5,7 @@ import mcp_llm_router
 import mcp_llm_router.judge
 
 
-REPO_ROOT = Path("/home/runner/work/mcp-llm-router/mcp-llm-router")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_package_versions_match_release_metadata():

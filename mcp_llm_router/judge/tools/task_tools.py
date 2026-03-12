@@ -1,4 +1,4 @@
-"""Shared imports for extracted judge tool modules."""
+"""Judge task creation and lookup tools."""
 
 from __future__ import annotations
 

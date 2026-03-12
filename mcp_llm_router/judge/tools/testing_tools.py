@@ -1,4 +1,4 @@
-"""Shared imports for extracted judge tool modules."""
+"""Judge testing validation tools."""
 
 from __future__ import annotations
 
