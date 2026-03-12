@@ -109,14 +109,11 @@ async def set_coding_task(
     user_requirements: str = "",  # Updates current requirements
     state: TaskState = TaskState.CREATED,  # Optional: update task state with validation when updating existing task
     # OPTIONAL
-    tags: list[str] = [],  # noqa: B006
+    tags: list[str] | None = None,
 ) -> TaskAnalysisResult:
     """Create or update coding task metadata with enhanced workflow management."""
     task_id_for_logging = task_id if task_id else "new_task"
-
-    # Initialize mutable default (no longer needed since tags has default [])
-    # if tags is None:
-    #     tags = []
+    tags = list(tags or [])
 
     # Set global context reference for system-wide logging
     set_context_reference(ctx)
@@ -408,15 +405,19 @@ async def request_plan_approval(
     research: str,
     task_id: str,
     ctx: Context,
-    research_urls: list[str] = [],  # noqa: B006
+    research_urls: list[str] | None = None,
     problem_domain: str = "",
-    problem_non_goals: list[str] = [],  # noqa: B006
-    library_plan: list[dict] = [],  # noqa: B006
-    internal_reuse_components: list[dict] = [],  # noqa: B006
+    problem_non_goals: list[str] | None = None,
+    library_plan: list[dict] | None = None,
+    internal_reuse_components: list[dict] | None = None,
 ) -> PlanApprovalResult:
     """Present the plan to the user for approval before proceeding to judge_coding_plan."""
     # Log tool execution start
     log_tool_execution("request_plan_approval", task_id)
+    research_urls = list(research_urls or [])
+    problem_non_goals = list(problem_non_goals or [])
+    library_plan = list(library_plan or [])
+    internal_reuse_components = list(internal_reuse_components or [])
 
     try:
         # Load task metadata
@@ -732,11 +733,12 @@ async def raise_obstacle(
     task_id: str = "",  # OPTIONAL: Task ID for context and memory
     # Optional HITL assistance inputs
     decision_area: str = "",
-    constraints: list[str] = [],  # noqa: B006
+    constraints: list[str] | None = None,
 ) -> str:
     """Obstacle handling tool - description loaded from tool_description_provider."""
     # Log tool execution start
     log_tool_execution("raise_obstacle", task_id if task_id else "unknown")
+    constraints = list(constraints or [])
 
     # Store original input for saving later
     original_input = {
@@ -925,13 +927,16 @@ async def raise_missing_requirements(
     task_id: str,  # REQUIRED: Task ID for context and memory
     ctx: Context,
     # Optional HITL assistance inputs
-    decision_areas: list[str] = [],  # noqa: B006
-    options: list[str] = [],  # noqa: B006
-    constraints: list[str] = [],  # noqa: B006
+    decision_areas: list[str] | None = None,
+    options: list[str] | None = None,
+    constraints: list[str] | None = None,
 ) -> str:
     """Requirements clarification tool - description loaded from tool_description_provider."""
     # Log tool execution start
     log_tool_execution("raise_missing_requirements", task_id)
+    decision_areas = list(decision_areas or [])
+    options = list(options or [])
+    constraints = list(constraints or [])
 
     # Store original input for saving later
     original_input = {
@@ -1120,13 +1125,14 @@ async def judge_coding_task_completion(
     implementation_details: str,
     ctx: Context,
     # OPTIONAL
-    remaining_work: list[str] = [],  # noqa: B006
+    remaining_work: list[str] | None = None,
     quality_notes: str = "",
     testing_status: str = "",
 ) -> TaskCompletionResult:
     """Final validation tool for coding task completion."""
     # Log tool execution start
     log_tool_execution("judge_coding_task_completion", task_id)
+    remaining_work = list(remaining_work or [])
 
     # Store original input for saving later
     original_input = {
@@ -1442,16 +1448,22 @@ async def judge_coding_plan(
     user_requirements: str = "",
     # OPTIONAL explicit inputs to avoid rejection on missing deliverables
     problem_domain: str = "",
-    problem_non_goals: list[str] = [],  # noqa: B006
-    library_plan: list[dict] = [],  # noqa: B006
-    internal_reuse_components: list[dict] = [],  # noqa: B006
-    design_patterns: list[dict] = [],  # noqa: B006
-    identified_risks: list[str] = [],  # noqa: B006
-    risk_mitigation_strategies: list[str] = [],  # noqa: B006
+    problem_non_goals: list[str] | None = None,
+    library_plan: list[dict] | None = None,
+    internal_reuse_components: list[dict] | None = None,
+    design_patterns: list[dict] | None = None,
+    identified_risks: list[str] | None = None,
+    risk_mitigation_strategies: list[str] | None = None,
 ) -> JudgeResponse:
     """Coding plan evaluation tool - description loaded from tool_description_provider."""
     # Log tool execution start
     log_tool_execution("judge_coding_plan", task_id if task_id else "test_task")
+    problem_non_goals = list(problem_non_goals or [])
+    library_plan = list(library_plan or [])
+    internal_reuse_components = list(internal_reuse_components or [])
+    design_patterns = list(design_patterns or [])
+    identified_risks = list(identified_risks or [])
+    risk_mitigation_strategies = list(risk_mitigation_strategies or [])
 
     # Store original input for saving later
     original_input = {
@@ -2449,7 +2461,7 @@ async def judge_testing_implementation(
     test_execution_results: str,
     ctx: Context,
     test_coverage_report: str = "",
-    test_types_implemented: list[str] = [],  # noqa: B006
+    test_types_implemented: list[str] | None = None,
     testing_framework: str = "",
     performance_test_results: str = "",
     manual_test_notes: str = "",
@@ -2457,6 +2469,7 @@ async def judge_testing_implementation(
     """Testing implementation validation tool - description loaded from tool_description_provider."""
     # Log tool execution start
     log_tool_execution("judge_testing_implementation", task_id)
+    test_types_implemented = list(test_types_implemented or [])
 
     # Store original input for saving later
     original_input = {

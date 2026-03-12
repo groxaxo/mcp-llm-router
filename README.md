@@ -45,6 +45,8 @@ This project follows an **"all-local except the brain"** design philosophy:
 
 ## Installation
 
+This project is tested on **Python 3.12 and 3.13**.
+
 ### Quick Install (Recommended)
 
 **One-command automated installation:**
@@ -76,7 +78,7 @@ pip install -U pip
 pip install -e .
 
 # Option 2: Using Conda
-conda create -n mcp-router python=3.12 -y
+conda create -n mcp-router python=3.13 -y
 conda activate mcp-router
 pip install -U pip
 pip install -e .
@@ -157,6 +159,8 @@ mcp-llm-router/
 
 ### MCP Server Configuration (`mcp-config.json`)
 
+#### Canonical minimal config
+
 ```json
 {
   "mcpServers": {
@@ -164,17 +168,39 @@ mcp-llm-router/
       "command": "python",
       "args": ["-m", "mcp_llm_router.server"],
       "env": {
-        "OPENAI_API_KEY": "your-openai-key",
-        "DEEPINFRA_API_KEY": "your-deepinfra-key",
-        "OPENROUTER_API_KEY": "your-openrouter-key"
+        "DEEPSEEK_API_KEY": "your-deepseek-key",
+        "ROUTER_BRAIN_PROVIDER": "deepseek",
+        "ROUTER_BRAIN_MODEL": "deepseek-reasoner",
+        "ROUTER_BRAIN_API_KEY_ENV": "DEEPSEEK_API_KEY",
+        "EMBEDDINGS_PROVIDER": "ollama",
+        "EMBEDDINGS_BASE_URL": "http://localhost:11434",
+        "EMBEDDINGS_MODEL": "qwen3-embedding:0.6b"
       }
-    },
-    "other-server": {
-      "command": "python",
-      "args": ["-m", "other_mcp_server"],
-      "env": {}
     }
+  }
 }
+```
+
+#### Provider override example
+
+```json
+{
+  "mcpServers": {
+    "llm-router": {
+      "command": "python",
+      "args": ["-m", "mcp_llm_router.server"],
+      "env": {
+        "OPENROUTER_API_KEY": "sk-or-...",
+        "ROUTER_BRAIN_PROVIDER": "openrouter",
+        "ROUTER_BRAIN_MODEL": "anthropic/claude-3.7-sonnet",
+        "ROUTER_BRAIN_API_KEY_ENV": "OPENROUTER_API_KEY",
+        "ROUTER_BRAIN_BASE_URL": "https://openrouter.ai/api/v1",
+        "EMBEDDINGS_PROVIDER": "ollama",
+        "EMBEDDINGS_BASE_URL": "http://localhost:11434",
+        "EMBEDDINGS_MODEL": "qwen3-embedding:0.6b"
+      }
+    }
+  }
 }
 ```
 
@@ -211,6 +237,8 @@ export DEEPSEEK_API_KEY="..."
 ```
 
 ### Brain Configuration (Router LLM)
+
+The canonical examples in this README use a **DeepSeek brain + local Ollama embeddings** baseline. Provider overrides only need to change the `ROUTER_BRAIN_*` variables and API key.
 
 ```bash
 # Core brain settings

@@ -1,13 +1,15 @@
-"""Quick test to verify MCP server tools are properly defined."""
-import sys
-sys.path.insert(0, '/home/op/mcp-llm-router')
+"""Quick smoke tests for MCP tool registration."""
+
+import pytest
 
 from mcp_llm_router.server import mcp
 
-print("✓ MCP Server initialized successfully")
-print(f"\n📋 Available tools:")
-tools = mcp.list_tools()
-for tool in tools:
-    print(f"  - {tool.name}")
-    print(f"    {tool.description[:80]}...")
-print(f"\nTotal: {len(tools)} tools")
+
+@pytest.mark.anyio
+async def test_mcp_server_lists_tools():
+    tools = await mcp.list_tools()
+
+    tool_names = {tool.name for tool in tools}
+
+    assert "start_session" in tool_names
+    assert "agent_llm_request" in tool_names
