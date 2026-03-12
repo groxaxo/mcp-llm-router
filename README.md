@@ -24,6 +24,7 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 - **Configurable "Brain" Model**: Choose DeepSeek reasoning or any OpenAI-compatible model as the router brain.
 - **Session Management**: Track agent sessions with goals, constraints, and event logging.
 - **Quality Gating (Judge)**: Plan → code → test → completion validation using the embedded Judge toolset.
+- **MCP-Native Context**: Embedded judge resources expose current task state, history, rubric, and workflow state snapshots.
 - **Local-First Memory**: **Default: Local embeddings via Ollama** with optional ChromaDB vector store for efficient semantic search. OpenAI-compatible endpoints supported as fallback.
 - **Local Cross-Encoder Reranking**: Optional privacy-focused reranking using Qwen3-Reranker-0.6B for improved search relevance without external API calls.
 - **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers.
@@ -224,6 +225,23 @@ python examples/local_reranker_example.py
 ```
 
 Note: the demo skips `request_plan_approval` because it requires user elicitation. Ensure `DEEPSEEK_API_KEY` (or `LLM_API_KEY`) is set and Ollama is running for embeddings.
+
+### Embedded judge resources + prompts
+
+The embedded judge now exposes additive MCP resources and prompts alongside the existing tools:
+
+- Resources:
+  - `judge://current-task`
+  - `judge://task/{task_id}`
+  - `judge://task/{task_id}/history`
+  - `judge://policy/rubric`
+  - `judge://workflow/states`
+- Prompts:
+  - `start_judged_coding_task`
+  - `submit_implementation_for_review`
+  - `prepare_testing_evidence`
+
+When an MCP client exposes roots, judge review/testing tools validate submitted paths against those roots. When roots are unavailable, the server preserves the existing stdio-first behavior.
 
 ### Environment Variables
 
@@ -738,6 +756,17 @@ cd ~/mcp-llm-router
 conda activate mcp-router
 python -m mcp_llm_router.server
 ```
+
+Inspector-style capability smoke check:
+
+```bash
+python scripts/inspector_smoke.py
+```
+
+Architecture and contributor guides:
+
+- `docs/architecture.md`
+- `docs/how-to-add-a-judge-tool.md`
 
 ## Environment Variables
 

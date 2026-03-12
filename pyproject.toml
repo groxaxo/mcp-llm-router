@@ -34,6 +34,9 @@ test = [
     "pytest>=9.0.0",
 ]
 
+[project.scripts]
+mcp-llm-router = "mcp_llm_router.cli:main"
+
 [tool.setuptools]
 include-package-data = true
 

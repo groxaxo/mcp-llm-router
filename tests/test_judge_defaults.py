@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import mcp_llm_router.judge.server as judge_server
+from mcp_llm_router.judge.tools import task_tools
 from mcp_llm_router.judge.models.enhanced_responses import TaskAnalysisResult
 from mcp_llm_router.judge.models.task_metadata import TaskMetadata, TaskSize, TaskState
 from mcp_llm_router.judge.workflow.workflow_guidance import WorkflowGuidance
@@ -70,22 +71,22 @@ async def test_set_coding_task_default_tags_are_isolated():
     ctx = MagicMock()
 
     with (
-        patch.object(judge_server, "set_context_reference"),
-        patch.object(judge_server, "context_logger", MagicMock(info=AsyncMock())),
+        patch.object(task_tools, "set_context_reference"),
+        patch.object(task_tools, "context_logger", MagicMock(info=AsyncMock())),
         patch(
-            "mcp_llm_router.judge.server.create_new_coding_task",
+            "mcp_llm_router.judge.tools.task_tools.create_new_coding_task",
             side_effect=fake_create_new_coding_task,
         ),
         patch(
-            "mcp_llm_router.judge.server.calculate_next_stage",
+            "mcp_llm_router.judge.tools.task_tools.calculate_next_stage",
             AsyncMock(return_value=fake_guidance),
         ),
         patch(
-            "mcp_llm_router.judge.server.save_task_metadata_to_history",
+            "mcp_llm_router.judge.tools.task_tools.save_task_metadata_to_history",
             AsyncMock(),
         ),
         patch.object(
-            judge_server,
+            task_tools,
             "conversation_service",
             MagicMock(save_tool_interaction_and_cleanup=AsyncMock()),
         ),
