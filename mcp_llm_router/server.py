@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from mcp import ClientSession, StdioServerParameters
@@ -49,6 +49,10 @@ MEMORY_DB_PATH = os.getenv("MCP_ROUTER_MEMORY_DB", os.path.join(DATA_DIR, "memor
 
 memory_store = MemoryStore(MEMORY_DB_PATH)
 brain_client = BrainClient(DEFAULT_PROVIDER_BASE_URLS)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _default_brain_config() -> BrainConfig:
@@ -266,8 +270,8 @@ def start_session(
         "context": context,
         "metadata": metadata or {},
         "events": [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
         "brain_config": brain_config or {},
         "memory_settings": memory_settings or {},
         "task_id": task_id,
@@ -329,7 +333,7 @@ def configure_brain(
         if not session:
             return {"success": False, "error": f"Session {session_id} not found"}
         session["brain_config"] = _brain_config_to_dict(merged)
-        session["updated_at"] = datetime.utcnow().isoformat()
+        session["updated_at"] = _utc_now_iso()
         scope = "session"
     else:
         DEFAULT_BRAIN_CONFIG = merged
@@ -379,7 +383,7 @@ def configure_memory(
         if not session:
             return {"success": False, "error": f"Session {session_id} not found"}
         session["memory_settings"] = _memory_settings_to_dict(merged)
-        session["updated_at"] = datetime.utcnow().isoformat()
+        session["updated_at"] = _utc_now_iso()
         scope = "session"
     else:
         DEFAULT_MEMORY_SETTINGS = merged
@@ -399,7 +403,7 @@ def link_task(session_id: str, task_id: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Session {session_id} not found"}
 
     session["task_id"] = task_id
-    session["updated_at"] = datetime.utcnow().isoformat()
+    session["updated_at"] = _utc_now_iso()
 
     return {"success": True, "session_id": session_id, "task_id": task_id}
 
@@ -411,14 +415,14 @@ def _log_event(
         return {"success": False, "error": f"Session {session_id} not found"}
 
     event = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _utc_now_iso(),
         "kind": kind,
         "message": message,
         "details": details or {},
     }
 
     sessions[session_id]["events"].append(event)
-    sessions[session_id]["updated_at"] = datetime.utcnow().isoformat()
+    sessions[session_id]["updated_at"] = _utc_now_iso()
 
     return {"success": True, "event": event, "session_id": session_id}
 

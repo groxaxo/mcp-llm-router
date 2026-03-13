@@ -757,6 +757,12 @@ conda activate mcp-router
 python -m mcp_llm_router.server
 ```
 
+Or use the packaged CLI entrypoint after installation:
+
+```bash
+mcp-llm-router
+```
+
 Inspector-style capability smoke check:
 
 ```bash
