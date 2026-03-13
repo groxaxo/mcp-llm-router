@@ -5,9 +5,11 @@ This test verifies the control flow and configuration handling.
 """
 
 import asyncio
+import pytest
 from mcp_llm_router.memory import RerankConfig, rerank_documents
 
 
+@pytest.mark.anyio
 async def test_rerank_routing():
     """Test that reranking is routed correctly based on mode."""
     

@@ -6,9 +6,11 @@ from the rag package into the memory module's reranking pipeline.
 """
 
 import asyncio
+import pytest
 from mcp_llm_router.memory import RerankConfig, rerank_documents
 
 
+@pytest.mark.anyio
 async def test_local_reranker():
     """Test the local reranker with sample documents."""
     
@@ -76,6 +78,7 @@ async def test_local_reranker():
         return False
 
 
+@pytest.mark.anyio
 async def test_fallback_when_no_local():
     """Test that the system falls back gracefully when local reranker is unavailable."""
     

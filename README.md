@@ -24,6 +24,7 @@ A Model Context Protocol (MCP) server for routing LLM requests across multiple p
 - **Configurable "Brain" Model**: Choose DeepSeek reasoning or any OpenAI-compatible model as the router brain.
 - **Session Management**: Track agent sessions with goals, constraints, and event logging.
 - **Quality Gating (Judge)**: Plan → code → test → completion validation using the embedded Judge toolset.
+- **MCP-Native Context**: Embedded judge resources expose current task state, history, rubric, and workflow state snapshots.
 - **Local-First Memory**: **Default: Local embeddings via Ollama** with optional ChromaDB vector store for efficient semantic search. OpenAI-compatible endpoints supported as fallback.
 - **Local Cross-Encoder Reranking**: Optional privacy-focused reranking using Qwen3-Reranker-0.6B for improved search relevance without external API calls.
 - **MCP Server Orchestration**: Connect to and orchestrate multiple MCP servers.
@@ -44,6 +45,8 @@ This project follows an **"all-local except the brain"** design philosophy:
 **Why?** This architecture keeps your data and semantic search private and fast, while leveraging powerful external LLMs only for high-level reasoning tasks.
 
 ## Installation
+
+This project is tested on **Python 3.12 and 3.13**.
 
 ### Quick Install (Recommended)
 
@@ -76,7 +79,7 @@ pip install -U pip
 pip install -e .
 
 # Option 2: Using Conda
-conda create -n mcp-router python=3.12 -y
+conda create -n mcp-router python=3.13 -y
 conda activate mcp-router
 pip install -U pip
 pip install -e .
@@ -157,6 +160,8 @@ mcp-llm-router/
 
 ### MCP Server Configuration (`mcp-config.json`)
 
+#### Canonical minimal config
+
 ```json
 {
   "mcpServers": {
@@ -164,17 +169,39 @@ mcp-llm-router/
       "command": "python",
       "args": ["-m", "mcp_llm_router.server"],
       "env": {
-        "OPENAI_API_KEY": "your-openai-key",
-        "DEEPINFRA_API_KEY": "your-deepinfra-key",
-        "OPENROUTER_API_KEY": "your-openrouter-key"
+        "DEEPSEEK_API_KEY": "your-deepseek-key",
+        "ROUTER_BRAIN_PROVIDER": "deepseek",
+        "ROUTER_BRAIN_MODEL": "deepseek-reasoner",
+        "ROUTER_BRAIN_API_KEY_ENV": "DEEPSEEK_API_KEY",
+        "EMBEDDINGS_PROVIDER": "ollama",
+        "EMBEDDINGS_BASE_URL": "http://localhost:11434",
+        "EMBEDDINGS_MODEL": "qwen3-embedding:0.6b"
       }
-    },
-    "other-server": {
-      "command": "python",
-      "args": ["-m", "other_mcp_server"],
-      "env": {}
     }
+  }
 }
+```
+
+#### Provider override example
+
+```json
+{
+  "mcpServers": {
+    "llm-router": {
+      "command": "python",
+      "args": ["-m", "mcp_llm_router.server"],
+      "env": {
+        "OPENROUTER_API_KEY": "sk-or-...",
+        "ROUTER_BRAIN_PROVIDER": "openrouter",
+        "ROUTER_BRAIN_MODEL": "anthropic/claude-3.7-sonnet",
+        "ROUTER_BRAIN_API_KEY_ENV": "OPENROUTER_API_KEY",
+        "ROUTER_BRAIN_BASE_URL": "https://openrouter.ai/api/v1",
+        "EMBEDDINGS_PROVIDER": "ollama",
+        "EMBEDDINGS_BASE_URL": "http://localhost:11434",
+        "EMBEDDINGS_MODEL": "qwen3-embedding:0.6b"
+      }
+    }
+  }
 }
 ```
 
@@ -199,6 +226,23 @@ python examples/local_reranker_example.py
 
 Note: the demo skips `request_plan_approval` because it requires user elicitation. Ensure `DEEPSEEK_API_KEY` (or `LLM_API_KEY`) is set and Ollama is running for embeddings.
 
+### Embedded judge resources + prompts
+
+The embedded judge now exposes additive MCP resources and prompts alongside the existing tools:
+
+- Resources:
+  - `judge://current-task`
+  - `judge://task/{task_id}`
+  - `judge://task/{task_id}/history`
+  - `judge://policy/rubric`
+  - `judge://workflow/states`
+- Prompts:
+  - `start_judged_coding_task`
+  - `submit_implementation_for_review`
+  - `prepare_testing_evidence`
+
+When an MCP client exposes roots, judge review/testing tools validate submitted paths against those roots. When roots are unavailable, the server preserves the existing stdio-first behavior.
+
 ### Environment Variables
 
 Set API keys in your environment or in the config:
@@ -211,6 +255,8 @@ export DEEPSEEK_API_KEY="..."
 ```
 
 ### Brain Configuration (Router LLM)
+
+The canonical examples in this README use a **DeepSeek brain + local Ollama embeddings** baseline. Provider overrides only need to change the `ROUTER_BRAIN_*` variables and API key.
 
 ```bash
 # Core brain settings
@@ -710,6 +756,23 @@ cd ~/mcp-llm-router
 conda activate mcp-router
 python -m mcp_llm_router.server
 ```
+
+Or use the packaged CLI entrypoint after installation:
+
+```bash
+mcp-llm-router
+```
+
+Inspector-style capability smoke check:
+
+```bash
+python scripts/inspector_smoke.py
+```
+
+Architecture and contributor guides:
+
+- `docs/architecture.md`
+- `docs/how-to-add-a-judge-tool.md`
 
 ## Environment Variables
 

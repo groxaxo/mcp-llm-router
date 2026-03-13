@@ -546,12 +546,12 @@ async def evaluate_coding_plan(
     task_metadata: Any,  # TaskMetadata type - avoiding import to prevent circular dependency
     ctx: Context,
     problem_domain: str = "",
-    problem_non_goals: list[str] = [],  # noqa: B006
-    library_plan: list[dict] = [],  # noqa: B006
-    internal_reuse_components: list[dict] = [],  # noqa: B006
-    design_patterns: list[dict] = [],  # noqa: B006
-    identified_risks_override: list[str] = [],  # noqa: B006
-    risk_mitigation_override: list[str] = [],  # noqa: B006
+    problem_non_goals: list[str] | None = None,
+    library_plan: list[dict] | None = None,
+    internal_reuse_components: list[dict] | None = None,
+    design_patterns: list[dict] | None = None,
+    identified_risks_override: list[str] | None = None,
+    risk_mitigation_override: list[str] | None = None,
 ) -> Any:
     """Evaluate coding plan using AI judge.
 
@@ -566,6 +566,13 @@ async def evaluate_coding_plan(
     )
     from mcp_llm_router.judge.models.enhanced_responses import JudgeResponse
     from mcp_llm_router.judge.prompting.loader import create_separate_messages
+
+    problem_non_goals = list(problem_non_goals or [])
+    library_plan = list(library_plan or [])
+    internal_reuse_components = list(internal_reuse_components or [])
+    design_patterns = list(design_patterns or [])
+    identified_risks_override = list(identified_risks_override or [])
+    risk_mitigation_override = list(risk_mitigation_override or [])
 
     # Extract the latest workflow guidance from conversation history
     workflow_guidance_obj = await extract_latest_workflow_guidance(conversation_history)

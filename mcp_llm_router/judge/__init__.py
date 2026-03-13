@@ -5,7 +5,9 @@ This package provides MCP tools for validating coding plans and code changes
 against software engineering best practices.
 """
 
-__version__ = "0.5.0"
+from mcp_llm_router import __version__ as __router_version__
+
+__version__ = __router_version__
 
 
 # Lazy imports to avoid dependency issues in Cloudflare Workers
